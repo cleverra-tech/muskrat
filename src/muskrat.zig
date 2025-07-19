@@ -29,6 +29,9 @@ pub const readers = @import("readers.zig");
 // Output formatters
 pub const formatters = @import("formatters.zig");
 
+// Memory management
+pub const memory = @import("memory.zig");
+
 test {
     testing.refAllDecls(@This());
 }
