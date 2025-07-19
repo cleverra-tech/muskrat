@@ -17,6 +17,9 @@ pub const ParallelConfig = @import("parallel.zig").ParallelConfig;
 // Configuration
 pub const Config = @import("config.zig").Config;
 
+// Kernel functions
+pub const kernels = @import("kernels.zig");
+
 test {
     testing.refAllDecls(@This());
 }
