@@ -38,6 +38,9 @@ pub const benchmark = @import("benchmark.zig");
 // Comprehensive testing
 pub const comprehensive_test = @import("comprehensive_test.zig");
 
+// SIMD optimizations
+pub const simd = @import("simd.zig");
+
 test {
     testing.refAllDecls(@This());
 }

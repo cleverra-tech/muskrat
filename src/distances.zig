@@ -2,14 +2,24 @@ const std = @import("std");
 const testing = std.testing;
 const Allocator = std.mem.Allocator;
 const StringValue = @import("string.zig").StringValue;
+const simd = @import("simd.zig");
 
 /// Compute Hamming distance between two strings
 /// Returns number of positions where characters differ
 /// Strings must be of equal length
+///
+/// This function automatically uses SIMD optimization for byte strings
+/// when beneficial, falling back to scalar implementation for other types.
 pub fn hamming(str1: StringValue, str2: StringValue) f64 {
     if (str1.len != str2.len) return std.math.inf(f64);
     if (str1.getType() != str2.getType()) return std.math.inf(f64);
 
+    // Use SIMD optimization for byte strings when beneficial
+    if (str1.getType() == .byte and simd.hasSIMDSupport() and str1.len >= 16) {
+        return simd.hammingDistanceSIMD(str1, str2);
+    }
+
+    // Fallback to scalar implementation
     var distance: usize = 0;
     for (0..str1.len) |i| {
         if (str1.get(i) != str2.get(i)) {

@@ -3,6 +3,7 @@ const testing = std.testing;
 const Allocator = std.mem.Allocator;
 const StringValue = @import("string.zig").StringValue;
 const StringType = @import("string.zig").StringType;
+const simd = @import("simd.zig");
 const Symbol = @import("string.zig").Symbol;
 
 /// Hash table for token-to-symbol mapping
@@ -50,10 +51,17 @@ pub const Processor = struct {
     /// Convert string to byte representation with optional preprocessing
     pub fn toBytes(self: *Self, input: []const u8) !StringValue {
         if (self.normalize_case) {
-            var normalized = try self.allocator.alloc(u8, input.len);
-            for (input, 0..) |c, i| {
-                normalized[i] = std.ascii.toLower(c);
-            }
+            // Use SIMD optimization for case normalization when beneficial
+            const normalized = if (simd.hasSIMDSupport() and input.len >= 16)
+                try simd.toLowerSIMD(self.allocator, input)
+            else blk: {
+                var result = try self.allocator.alloc(u8, input.len);
+                for (input, 0..) |c, i| {
+                    result[i] = std.ascii.toLower(c);
+                }
+                break :blk result;
+            };
+
             // StringValue.fromBytes will create its own copy, so we need to free this
             defer self.allocator.free(normalized);
             return StringValue.fromBytes(self.allocator, normalized);
