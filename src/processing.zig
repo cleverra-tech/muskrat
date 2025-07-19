@@ -76,6 +76,7 @@ pub const Processor = struct {
         defer tokens.deinit();
 
         var iterator = self.tokenIterator(input);
+        defer iterator.deinit();
         while (iterator.next()) |token| {
             const symbol = try self.getOrCreateSymbol(token);
             try tokens.append(symbol);
@@ -124,6 +125,7 @@ pub const Processor = struct {
             .pos = 0,
             .normalize_case = self.normalize_case,
             .allocator = self.allocator,
+            .allocated_tokens = std.ArrayList([]u8).init(self.allocator),
         };
     }
 
@@ -160,6 +162,7 @@ pub const Processor = struct {
         defer tokens.deinit();
 
         var iterator = self.tokenIterator(input);
+        defer iterator.deinit();
         while (iterator.next()) |token| {
             try tokens.append(token);
         }
@@ -244,6 +247,7 @@ const TokenIterator = struct {
     pos: usize,
     normalize_case: bool,
     allocator: Allocator,
+    allocated_tokens: std.ArrayList([]u8), // Track allocated normalized tokens
 
     fn next(self: *TokenIterator) ?[]const u8 {
         // Skip delimiters
@@ -266,8 +270,12 @@ const TokenIterator = struct {
             for (token, 0..) |c, i| {
                 normalized[i] = std.ascii.toLower(c);
             }
-            // Note: This creates a memory leak in the iterator design
-            // In practice, this should be handled by the caller
+            // Track allocated token for proper cleanup
+            self.allocated_tokens.append(normalized) catch {
+                // If we can't track it, free it immediately and return null
+                self.allocator.free(normalized);
+                return null;
+            };
             return normalized;
         }
         return token;
@@ -275,6 +283,14 @@ const TokenIterator = struct {
 
     fn isDelimiter(self: TokenIterator, c: u8) bool {
         return std.mem.indexOfScalar(u8, self.delimiters, c) != null;
+    }
+
+    fn deinit(self: *TokenIterator) void {
+        // Free all allocated normalized tokens
+        for (self.allocated_tokens.items) |token| {
+            self.allocator.free(token);
+        }
+        self.allocated_tokens.deinit();
     }
 };
 
@@ -317,6 +333,30 @@ test "Processor case normalization" {
 
     try testing.expect(str.get(0) == 'h');
     try testing.expect(str.get(1) == 'e');
+}
+
+test "Processor tokenization with case normalization (memory leak fix)" {
+    const allocator = testing.allocator;
+
+    var processor = Processor.init(allocator);
+    defer processor.deinit();
+
+    processor.setCaseNormalization(true);
+
+    // Test tokenization with case normalization - this should not leak memory
+    var str = try processor.toTokens("HELLO WORLD TEST");
+    defer str.deinit();
+
+    try testing.expect(str.getType() == .token);
+    try testing.expect(str.len == 3);
+
+    // Verify the tokens were created (they should map to the same symbols as lowercase)
+    var str_lower = try processor.toTokens("hello world test");
+    defer str_lower.deinit();
+
+    try testing.expect(str.get(0) == str_lower.get(0)); // "HELLO" -> "hello"
+    try testing.expect(str.get(1) == str_lower.get(1)); // "WORLD" -> "world"
+    try testing.expect(str.get(2) == str_lower.get(2)); // "TEST" -> "test"
 }
 
 test "Processor tokenization" {
