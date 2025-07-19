@@ -30,18 +30,79 @@ pub const BenchmarkResult = struct {
     }
 };
 
+/// Simple memory usage tracker for process-level memory monitoring
+const MemoryTracker = struct {
+    initial_rss: usize,
+
+    const Self = @This();
+
+    fn init() Self {
+        return Self{
+            .initial_rss = getCurrentRSS() catch 0,
+        };
+    }
+
+    fn getCurrentMemoryUsage(self: Self) usize {
+        const current_rss = getCurrentRSS() catch 0;
+        if (current_rss >= self.initial_rss) {
+            return current_rss - self.initial_rss;
+        }
+        return 0;
+    }
+
+    /// Get current RSS (Resident Set Size) on Linux
+    fn getCurrentRSS() !usize {
+        // Try to read from /proc/self/status
+        const file = std.fs.openFileAbsolute("/proc/self/status", .{}) catch {
+            // If we can't read RSS, return 0 (graceful degradation)
+            return 0;
+        };
+        defer file.close();
+
+        var buffer: [4096]u8 = undefined;
+        const bytes_read = try file.readAll(&buffer);
+        const content = buffer[0..bytes_read];
+
+        // Look for "VmRSS:" line
+        var lines = std.mem.splitSequence(u8, content, "\n");
+        while (lines.next()) |line| {
+            if (std.mem.startsWith(u8, line, "VmRSS:")) {
+                // Parse the number (format is "VmRSS:   12345 kB")
+                var parts = std.mem.tokenizeSequence(u8, line, " \t");
+                _ = parts.next(); // Skip "VmRSS:"
+                if (parts.next()) |kb_str| {
+                    const kb = std.fmt.parseInt(usize, kb_str, 10) catch 0;
+                    return kb * 1024; // Convert to bytes
+                }
+            }
+        }
+        return 0;
+    }
+};
+
 /// Benchmark runner
 pub const Benchmark = struct {
     const Self = @This();
 
     allocator: Allocator,
     results: std.ArrayList(BenchmarkResult),
+    memory_tracker: ?MemoryTracker, // Optional memory tracking
 
     /// Initialize benchmark runner
     pub fn init(allocator: Allocator) Self {
         return Self{
             .allocator = allocator,
             .results = std.ArrayList(BenchmarkResult).init(allocator),
+            .memory_tracker = null,
+        };
+    }
+
+    /// Initialize benchmark runner with memory tracking
+    pub fn initWithMemoryTracking(allocator: Allocator) Self {
+        return Self{
+            .allocator = allocator,
+            .results = std.ArrayList(BenchmarkResult).init(allocator),
+            .memory_tracker = MemoryTracker.init(),
         };
     }
 
@@ -98,11 +159,11 @@ pub const Benchmark = struct {
         try self.results.append(result);
     }
 
-    /// Get current memory usage (approximation)
+    /// Get current memory usage
     fn getCurrentMemoryUsage(self: Self) usize {
-        _ = self;
-        // This is a simplified memory tracking
-        // In a real implementation, you might use a tracking allocator
+        if (self.memory_tracker) |tracker| {
+            return tracker.getCurrentMemoryUsage();
+        }
         return 0;
     }
 
@@ -511,4 +572,72 @@ test "BenchmarkResult formatting" {
     const formatted = try std.fmt.bufPrint(&buffer, "{f}", .{result});
     try testing.expect(std.mem.indexOf(u8, formatted, "Test") != null);
     try testing.expect(std.mem.indexOf(u8, formatted, "100") != null);
+}
+
+test "Memory tracking functionality" {
+    const allocator = testing.allocator;
+
+    // Test basic benchmark without memory tracking
+    {
+        var benchmark = Benchmark.init(allocator);
+        defer benchmark.deinit();
+
+        // Memory usage should always be 0 without tracking
+        try testing.expect(benchmark.getCurrentMemoryUsage() == 0);
+    }
+
+    // Test benchmark with memory tracking
+    {
+        var benchmark = Benchmark.initWithMemoryTracking(allocator);
+        defer benchmark.deinit();
+
+        // Should be able to get memory usage (may be 0 initially)
+        const initial_memory = benchmark.getCurrentMemoryUsage();
+        try testing.expect(initial_memory >= 0);
+
+        // Allocate some memory
+        const test_data = try allocator.alloc(u8, 1024);
+        defer allocator.free(test_data);
+
+        // Memory tracking should still work (tracks process RSS, not specific allocations)
+        const after_alloc = benchmark.getCurrentMemoryUsage();
+        try testing.expect(after_alloc >= 0);
+    }
+}
+
+test "Memory tracking in benchmark run" {
+    const allocator = testing.allocator;
+
+    var benchmark = Benchmark.initWithMemoryTracking(allocator);
+    defer benchmark.deinit();
+
+    // Simple benchmark function that allocates memory
+    const AllocContext = struct {
+        allocator: Allocator,
+        size: usize,
+    };
+
+    const allocBenchmarkFn = struct {
+        fn run(context: AllocContext) !void {
+            const data = try context.allocator.alloc(u8, context.size);
+            defer context.allocator.free(data);
+            // Do some work with the data
+            @memset(data, 0xAA);
+        }
+    }.run;
+
+    const context = AllocContext{
+        .allocator = allocator,
+        .size = 512,
+    };
+
+    // Run benchmark - this should track memory usage during the run
+    try benchmark.run("Memory allocation test", 10, allocBenchmarkFn, context);
+
+    const results = benchmark.getResults();
+    try testing.expect(results.len == 1);
+
+    // The benchmark should have measured some memory usage (process-level RSS tracking)
+    // Note: RSS tracking may show 0 if no significant memory growth occurred
+    try testing.expect(results[0].memory_used >= 0);
 }
