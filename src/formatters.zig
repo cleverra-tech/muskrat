@@ -5,6 +5,27 @@ const StringValue = @import("string.zig").StringValue;
 const Symbol = @import("string.zig").Symbol;
 const Matrix = @import("matrix.zig").Matrix;
 
+// Constants for formatters
+/// Binary format constants
+pub const BINARY_MAGIC_NUMBER = "MUSK";
+pub const BINARY_FORMAT_VERSION: u32 = 1;
+pub const BINARY_MAGIC_SIZE: usize = 4;
+
+/// Default formatting constants
+pub const DEFAULT_PRECISION: u8 = 6;
+pub const DEFAULT_DECIMAL_PRECISION: u8 = 3; // Used as documentation - hardcoded in format strings as .3
+pub const DEFAULT_FIELD_SEPARATOR = "\t";
+pub const DEFAULT_CSV_DELIMITER: u8 = ',';
+pub const DEFAULT_CSV_QUOTE_CHAR: u8 = '"';
+
+/// Hexadecimal formatting constants
+pub const HEX_PREFIX = "0x";
+pub const HEX_BYTE_WIDTH: u8 = 2; // Used as documentation - hardcoded in format strings as :0>2
+
+/// Boolean flag constants
+pub const HAS_FLAG: u8 = 1;
+pub const NO_FLAG: u8 = 0;
+
 /// Metadata for output formatting
 pub const OutputMetadata = struct {
     computation_time_ms: ?f64 = null,
@@ -39,7 +60,7 @@ pub const OutputFormatter = struct {
         return Self{
             .allocator = allocator,
             .include_metadata = true,
-            .precision = 6,
+            .precision = DEFAULT_PRECISION,
         };
     }
 
@@ -66,7 +87,7 @@ pub const TextFormatter = struct {
     pub fn init(allocator: Allocator) Self {
         return Self{
             .formatter = OutputFormatter.init(allocator),
-            .field_separator = "\t",
+            .field_separator = DEFAULT_FIELD_SEPARATOR,
             .show_labels = true,
         };
     }
@@ -156,7 +177,7 @@ pub const TextFormatter = struct {
                 },
                 .bit => |bits| {
                     // Format bits as hexadecimal: 0x1a2b3c
-                    try writer.writeAll("0x");
+                    try writer.writeAll(HEX_PREFIX);
                     for (bits) |byte| {
                         try writer.print("{x:0>2}", .{byte});
                     }
@@ -414,14 +435,14 @@ pub const BinaryFormatter = struct {
         const writer = output.writer();
 
         // Write header
-        try writer.writeAll("MUSK"); // Magic number
-        try writer.writeInt(u32, 1, .little); // Version
+        try writer.writeAll(BINARY_MAGIC_NUMBER); // Magic number
+        try writer.writeInt(u32, BINARY_FORMAT_VERSION, .little); // Version
 
         // Write metadata
-        const has_metadata: u8 = if (self.formatter.include_metadata and metadata != null) 1 else 0;
+        const has_metadata: u8 = if (self.formatter.include_metadata and metadata != null) HAS_FLAG else NO_FLAG;
         try writer.writeInt(u8, has_metadata, .little);
 
-        if (has_metadata == 1) {
+        if (has_metadata == HAS_FLAG) {
             try self.writeBinaryMetadata(writer, metadata.?);
         }
 
@@ -452,9 +473,9 @@ pub const BinaryFormatter = struct {
             }
 
             // Write label
-            const has_label: u8 = if (string.label != null) 1 else 0;
+            const has_label: u8 = if (string.label != null) HAS_FLAG else NO_FLAG;
             try writer.writeInt(u8, has_label, .little);
-            if (has_label == 1) {
+            if (has_label == HAS_FLAG) {
                 try writer.writeInt(u32, @bitCast(string.label.?), .little);
             }
         }
@@ -462,7 +483,7 @@ pub const BinaryFormatter = struct {
         // Write matrix dimensions
         try writer.writeInt(u32, @intCast(matrix.row_range.length()), .little);
         try writer.writeInt(u32, @intCast(matrix.col_range.length()), .little);
-        try writer.writeInt(u8, if (matrix.triangular) 1 else 0, .little);
+        try writer.writeInt(u8, if (matrix.triangular) HAS_FLAG else NO_FLAG, .little);
 
         // Write matrix data
         for (matrix.row_range.start..matrix.row_range.end) |i| {
@@ -480,9 +501,9 @@ pub const BinaryFormatter = struct {
         _ = self;
 
         // Write timestamp
-        const has_timestamp: u8 = if (metadata.timestamp != null) 1 else 0;
+        const has_timestamp: u8 = if (metadata.timestamp != null) HAS_FLAG else NO_FLAG;
         try writer.writeInt(u8, has_timestamp, .little);
-        if (has_timestamp == 1) {
+        if (has_timestamp == HAS_FLAG) {
             try writer.writeInt(i64, metadata.timestamp.?, .little);
         }
 
@@ -490,9 +511,9 @@ pub const BinaryFormatter = struct {
         try writer.writeInt(u32, @intCast(metadata.string_count), .little);
 
         // Write matrix size
-        const has_matrix_size: u8 = if (metadata.matrix_size != null) 1 else 0;
+        const has_matrix_size: u8 = if (metadata.matrix_size != null) HAS_FLAG else NO_FLAG;
         try writer.writeInt(u8, has_matrix_size, .little);
-        if (has_matrix_size == 1) {
+        if (has_matrix_size == HAS_FLAG) {
             try writer.writeInt(u32, @intCast(metadata.matrix_size.?.rows), .little);
             try writer.writeInt(u32, @intCast(metadata.matrix_size.?.cols), .little);
         }
@@ -503,9 +524,9 @@ pub const BinaryFormatter = struct {
         try writer.writeAll(distance_measure);
 
         // Write computation time
-        const has_time: u8 = if (metadata.computation_time_ms != null) 1 else 0;
+        const has_time: u8 = if (metadata.computation_time_ms != null) HAS_FLAG else NO_FLAG;
         try writer.writeInt(u8, has_time, .little);
-        if (has_time == 1) {
+        if (has_time == HAS_FLAG) {
             try writer.writeInt(u64, @bitCast(metadata.computation_time_ms.?), .little);
         }
     }
@@ -524,8 +545,8 @@ pub const CsvFormatter = struct {
     pub fn init(allocator: Allocator) Self {
         return Self{
             .formatter = OutputFormatter.init(allocator),
-            .delimiter = ',',
-            .quote_char = '"',
+            .delimiter = DEFAULT_CSV_DELIMITER,
+            .quote_char = DEFAULT_CSV_QUOTE_CHAR,
             .escape_quotes = true,
         };
     }
@@ -695,8 +716,8 @@ test "BinaryFormatter basic functionality" {
     defer allocator.free(output);
 
     // Check magic number
-    try testing.expect(output.len >= 4);
-    try testing.expect(std.mem.eql(u8, output[0..4], "MUSK"));
+    try testing.expect(output.len >= BINARY_MAGIC_SIZE);
+    try testing.expect(std.mem.eql(u8, output[0..BINARY_MAGIC_SIZE], BINARY_MAGIC_NUMBER));
 }
 
 test "BinaryFormatter with all string types" {
@@ -733,8 +754,8 @@ test "BinaryFormatter with all string types" {
     defer allocator.free(output);
 
     // Check magic number and that we have substantial output
-    try testing.expect(output.len >= 4);
-    try testing.expect(std.mem.eql(u8, output[0..4], "MUSK"));
+    try testing.expect(output.len >= BINARY_MAGIC_SIZE);
+    try testing.expect(std.mem.eql(u8, output[0..BINARY_MAGIC_SIZE], BINARY_MAGIC_NUMBER));
     try testing.expect(output.len > 50); // Should have meaningful binary data
 }
 

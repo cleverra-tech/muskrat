@@ -304,8 +304,8 @@ fn testOutputFormatters(allocator: Allocator) !void {
     const binary_output = try binary_formatter.formatMatrix(&matrix, &strings, metadata);
     defer allocator.free(binary_output);
 
-    try testing.expect(binary_output.len >= 4);
-    try testing.expect(std.mem.eql(u8, binary_output[0..4], "MUSK"));
+    try testing.expect(binary_output.len >= muskrat.formatters.BINARY_MAGIC_SIZE);
+    try testing.expect(std.mem.eql(u8, binary_output[0..muskrat.formatters.BINARY_MAGIC_SIZE], muskrat.formatters.BINARY_MAGIC_NUMBER));
 }
 
 fn testMemoryManagement(allocator: Allocator) !void {
