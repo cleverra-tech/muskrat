@@ -20,6 +20,9 @@ pub const Config = @import("config.zig").Config;
 // Kernel functions
 pub const kernels = @import("kernels.zig");
 
+// Similarity coefficients
+pub const coefficients = @import("coefficients.zig");
+
 test {
     testing.refAllDecls(@This());
 }
