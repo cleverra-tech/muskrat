@@ -1,0 +1,42 @@
+# Zig build artifacts
+.zig-cache/
+zig-cache/
+zig-out/
+*.a
+*.so
+*.dylib
+
+# Test data directories
+test_data/
+muskrat_data/
+muskrat_bench_data/
+data/
+
+# Benchmark results
+benchmark_results/
+
+# Temporary directories and files
+tmp/
+*.tmp
+*.log
+muskrat_test
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Library test output files
+*.out
+*.profdata
