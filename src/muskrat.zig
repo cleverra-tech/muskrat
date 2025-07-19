@@ -23,6 +23,9 @@ pub const kernels = @import("kernels.zig");
 // Similarity coefficients
 pub const coefficients = @import("coefficients.zig");
 
+// Input readers
+pub const readers = @import("readers.zig");
+
 test {
     testing.refAllDecls(@This());
 }
