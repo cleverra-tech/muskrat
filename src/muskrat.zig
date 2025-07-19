@@ -26,6 +26,9 @@ pub const coefficients = @import("coefficients.zig");
 // Input readers
 pub const readers = @import("readers.zig");
 
+// Output formatters
+pub const formatters = @import("formatters.zig");
+
 test {
     testing.refAllDecls(@This());
 }
