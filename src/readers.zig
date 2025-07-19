@@ -270,15 +270,109 @@ pub const DirectoryReader = struct {
         }
     }
 
-    /// Check if filename matches pattern (simplified glob matching)
+    /// Check if filename matches glob pattern
     fn matchesPattern(self: Self, filename: []const u8) bool {
-        // Simple pattern matching - for now just check extension
-        if (std.mem.startsWith(u8, self.file_pattern, "*")) {
-            const extension = self.file_pattern[1..]; // Remove *
-            return std.mem.endsWith(u8, filename, extension);
-        } else {
-            return std.mem.eql(u8, filename, self.file_pattern);
+        return globMatch(self.file_pattern, filename);
+    }
+
+    /// Glob pattern matching implementation
+    fn globMatch(pattern: []const u8, text: []const u8) bool {
+        return globMatchRecursive(pattern, 0, text, 0);
+    }
+
+    /// Recursive glob pattern matcher
+    fn globMatchRecursive(pattern: []const u8, p_idx: usize, text: []const u8, t_idx: usize) bool {
+        // If we've consumed both pattern and text, it's a match
+        if (p_idx >= pattern.len and t_idx >= text.len) return true;
+
+        // If pattern is consumed but text remains, no match (unless pattern ends with *)
+        if (p_idx >= pattern.len) return false;
+
+        // If text is consumed but pattern remains, check if remaining pattern is all *
+        if (t_idx >= text.len) {
+            for (p_idx..pattern.len) |i| {
+                if (pattern[i] != '*') return false;
+            }
+            return true;
         }
+
+        const p_char = pattern[p_idx];
+        const t_char = text[t_idx];
+
+        switch (p_char) {
+            '*' => {
+                // Try matching * with zero characters (skip the *)
+                if (globMatchRecursive(pattern, p_idx + 1, text, t_idx)) return true;
+
+                // Try matching * with one or more characters
+                var i = t_idx;
+                while (i < text.len) {
+                    if (globMatchRecursive(pattern, p_idx + 1, text, i + 1)) return true;
+                    i += 1;
+                }
+                return false;
+            },
+            '?' => {
+                // ? matches any single character
+                return globMatchRecursive(pattern, p_idx + 1, text, t_idx + 1);
+            },
+            '[' => {
+                // Character class matching [abc], [a-z], [!abc]
+                const close_bracket = std.mem.indexOfScalarPos(u8, pattern, p_idx + 1, ']') orelse return false;
+                const char_set = pattern[p_idx + 1 .. close_bracket];
+
+                if (char_set.len == 0) return false; // Empty character class
+
+                const negate = char_set[0] == '!';
+                const actual_set = if (negate) char_set[1..] else char_set;
+
+                const matches = matchesCharacterClass(t_char, actual_set);
+                const result = if (negate) !matches else matches;
+
+                if (result) {
+                    return globMatchRecursive(pattern, close_bracket + 1, text, t_idx + 1);
+                } else {
+                    return false;
+                }
+            },
+            '\\' => {
+                // Escape character - match the next character literally
+                if (p_idx + 1 >= pattern.len) return false;
+                const escaped_char = pattern[p_idx + 1];
+                if (escaped_char == t_char) {
+                    return globMatchRecursive(pattern, p_idx + 2, text, t_idx + 1);
+                } else {
+                    return false;
+                }
+            },
+            else => {
+                // Regular character - must match exactly
+                if (p_char == t_char) {
+                    return globMatchRecursive(pattern, p_idx + 1, text, t_idx + 1);
+                } else {
+                    return false;
+                }
+            },
+        }
+    }
+
+    /// Check if character matches a character class like "abc" or "a-z"
+    fn matchesCharacterClass(char: u8, char_set: []const u8) bool {
+        var i: usize = 0;
+        while (i < char_set.len) {
+            // Check for range notation like "a-z"
+            if (i + 2 < char_set.len and char_set[i + 1] == '-') {
+                const start = char_set[i];
+                const end = char_set[i + 2];
+                if (char >= start and char <= end) return true;
+                i += 3;
+            } else {
+                // Check for exact match
+                if (char == char_set[i]) return true;
+                i += 1;
+            }
+        }
+        return false;
     }
 
     /// Get all strings
@@ -514,6 +608,158 @@ test "DirectoryReader pattern matching" {
     reader.setFilePattern("specific.txt");
     try testing.expect(reader.matchesPattern("specific.txt"));
     try testing.expect(!reader.matchesPattern("other.txt"));
+}
+
+test "DirectoryReader glob pattern matching - wildcard" {
+    const allocator = testing.allocator;
+
+    var reader = DirectoryReader.init(allocator);
+    defer reader.deinit();
+
+    // Test * wildcard
+    reader.setFilePattern("*.txt");
+    try testing.expect(reader.matchesPattern("file.txt"));
+    try testing.expect(reader.matchesPattern("test.txt"));
+    try testing.expect(reader.matchesPattern("very_long_filename.txt"));
+    try testing.expect(!reader.matchesPattern("file.log"));
+    try testing.expect(!reader.matchesPattern("txtfile"));
+
+    // Test multiple wildcards
+    reader.setFilePattern("test*.log");
+    try testing.expect(reader.matchesPattern("test.log"));
+    try testing.expect(reader.matchesPattern("test123.log"));
+    try testing.expect(reader.matchesPattern("testfile.log"));
+    try testing.expect(!reader.matchesPattern("test.txt"));
+    try testing.expect(!reader.matchesPattern("file.log"));
+
+    // Test wildcard in middle
+    reader.setFilePattern("file*name.txt");
+    try testing.expect(reader.matchesPattern("filename.txt"));
+    try testing.expect(reader.matchesPattern("file_long_name.txt"));
+    try testing.expect(reader.matchesPattern("file123name.txt"));
+    try testing.expect(!reader.matchesPattern("filename.log"));
+    try testing.expect(!reader.matchesPattern("otherfile.txt"));
+}
+
+test "DirectoryReader glob pattern matching - question mark" {
+    const allocator = testing.allocator;
+
+    var reader = DirectoryReader.init(allocator);
+    defer reader.deinit();
+
+    // Test ? single character wildcard
+    reader.setFilePattern("test?.txt");
+    try testing.expect(reader.matchesPattern("test1.txt"));
+    try testing.expect(reader.matchesPattern("testa.txt"));
+    try testing.expect(reader.matchesPattern("test_.txt"));
+    try testing.expect(!reader.matchesPattern("test.txt"));
+    try testing.expect(!reader.matchesPattern("test12.txt"));
+    try testing.expect(!reader.matchesPattern("test1.log"));
+
+    // Test multiple ? wildcards
+    reader.setFilePattern("???.txt");
+    try testing.expect(reader.matchesPattern("abc.txt"));
+    try testing.expect(reader.matchesPattern("123.txt"));
+    try testing.expect(!reader.matchesPattern("ab.txt"));
+    try testing.expect(!reader.matchesPattern("abcd.txt"));
+}
+
+test "DirectoryReader glob pattern matching - character classes" {
+    const allocator = testing.allocator;
+
+    var reader = DirectoryReader.init(allocator);
+    defer reader.deinit();
+
+    // Test character class [abc]
+    reader.setFilePattern("test[abc].txt");
+    try testing.expect(reader.matchesPattern("testa.txt"));
+    try testing.expect(reader.matchesPattern("testb.txt"));
+    try testing.expect(reader.matchesPattern("testc.txt"));
+    try testing.expect(!reader.matchesPattern("testd.txt"));
+    try testing.expect(!reader.matchesPattern("test.txt"));
+
+    // Test character range [a-z]
+    reader.setFilePattern("file[0-9].log");
+    try testing.expect(reader.matchesPattern("file0.log"));
+    try testing.expect(reader.matchesPattern("file5.log"));
+    try testing.expect(reader.matchesPattern("file9.log"));
+    try testing.expect(!reader.matchesPattern("filea.log"));
+    try testing.expect(!reader.matchesPattern("file.log"));
+
+    // Test negated character class [!abc]
+    reader.setFilePattern("test[!0-9].txt");
+    try testing.expect(reader.matchesPattern("testa.txt"));
+    try testing.expect(reader.matchesPattern("testZ.txt"));
+    try testing.expect(!reader.matchesPattern("test1.txt"));
+    try testing.expect(!reader.matchesPattern("test9.txt"));
+}
+
+test "DirectoryReader glob pattern matching - escape sequences" {
+    const allocator = testing.allocator;
+
+    var reader = DirectoryReader.init(allocator);
+    defer reader.deinit();
+
+    // Test escaped special characters
+    reader.setFilePattern("test\\*.txt");
+    try testing.expect(reader.matchesPattern("test*.txt"));
+    try testing.expect(!reader.matchesPattern("testfile.txt"));
+    try testing.expect(!reader.matchesPattern("test.txt"));
+
+    reader.setFilePattern("test\\?.log");
+    try testing.expect(reader.matchesPattern("test?.log"));
+    try testing.expect(!reader.matchesPattern("testa.log"));
+    try testing.expect(!reader.matchesPattern("test.log"));
+}
+
+test "DirectoryReader glob pattern matching - complex patterns" {
+    const allocator = testing.allocator;
+
+    var reader = DirectoryReader.init(allocator);
+    defer reader.deinit();
+
+    // Complex pattern combining multiple features
+    reader.setFilePattern("*test[0-9]*.txt");
+    try testing.expect(reader.matchesPattern("mytest1file.txt"));
+    try testing.expect(reader.matchesPattern("test5.txt"));
+    try testing.expect(reader.matchesPattern("prefix_test9_suffix.txt"));
+    try testing.expect(!reader.matchesPattern("testfile.txt"));
+    try testing.expect(!reader.matchesPattern("mytest1file.log"));
+
+    // Pattern with multiple character classes
+    reader.setFilePattern("[Tt]est[0-9][a-z].log");
+    try testing.expect(reader.matchesPattern("Test1a.log"));
+    try testing.expect(reader.matchesPattern("test9z.log"));
+    try testing.expect(!reader.matchesPattern("test1.log"));
+    try testing.expect(!reader.matchesPattern("Test1A.log"));
+    try testing.expect(!reader.matchesPattern("best1a.log"));
+}
+
+test "DirectoryReader glob pattern matching - edge cases" {
+    const allocator = testing.allocator;
+
+    var reader = DirectoryReader.init(allocator);
+    defer reader.deinit();
+
+    // Empty pattern
+    reader.setFilePattern("");
+    try testing.expect(reader.matchesPattern(""));
+    try testing.expect(!reader.matchesPattern("file.txt"));
+
+    // Pattern with only wildcards
+    reader.setFilePattern("*");
+    try testing.expect(reader.matchesPattern("anything.txt"));
+    try testing.expect(reader.matchesPattern(""));
+    try testing.expect(reader.matchesPattern("file"));
+
+    reader.setFilePattern("***");
+    try testing.expect(reader.matchesPattern("anything.txt"));
+    try testing.expect(reader.matchesPattern(""));
+
+    // Invalid character class (unclosed)
+    reader.setFilePattern("test[abc.txt");
+    try testing.expect(!reader.matchesPattern("testa.txt"));
+    try testing.expect(!reader.matchesPattern("test[abc.txt"));
 }
 
 test "Error handling for nonexistent files" {
