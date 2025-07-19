@@ -32,6 +32,12 @@ pub const formatters = @import("formatters.zig");
 // Memory management
 pub const memory = @import("memory.zig");
 
+// Benchmarking and testing
+pub const benchmark = @import("benchmark.zig");
+
+// Comprehensive testing
+pub const comprehensive_test = @import("comprehensive_test.zig");
+
 test {
     testing.refAllDecls(@This());
 }

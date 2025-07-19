@@ -141,7 +141,7 @@ pub const MemoryPool = struct {
         if (self.current_block) |block| {
             const aligned_offset = std.mem.alignForward(usize, self.current_offset, alignment);
             if (aligned_offset + size <= block.data.len) {
-                const result = block.data[aligned_offset..aligned_offset + size];
+                const result = block.data[aligned_offset .. aligned_offset + size];
                 self.current_offset = aligned_offset + size;
                 return result;
             }
@@ -151,7 +151,7 @@ pub const MemoryPool = struct {
         try self.allocateNewBlock();
         const block = self.current_block.?;
         const aligned_offset = std.mem.alignForward(usize, 0, alignment);
-        const result = block.data[aligned_offset..aligned_offset + size];
+        const result = block.data[aligned_offset .. aligned_offset + size];
         self.current_offset = aligned_offset + size;
         return result;
     }
@@ -344,7 +344,7 @@ test "ObjectPool basic functionality" {
     // Test releasing and reusing
     pool.release(obj1);
     const obj3 = try pool.acquire(); // Should reuse obj1
-    
+
     // Release remaining objects
     pool.release(obj2);
     pool.release(obj3);
@@ -362,7 +362,7 @@ test "MemoryPool allocation" {
     // Test small allocations
     const data1 = try pool.alloc(64, 8);
     const data2 = try pool.alloc(128, 8);
-    
+
     try testing.expect(data1.len == 64);
     try testing.expect(data2.len == 128);
 
@@ -437,7 +437,7 @@ test "ObjectPool statistics" {
 
     const obj3 = try pool.acquire(); // Reuse
     const obj4 = try pool.acquire(); // Reuse
-    
+
     // Release remaining objects
     pool.release(obj3);
     pool.release(obj4);
