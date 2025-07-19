@@ -141,7 +141,11 @@ pub const ParallelCompute = struct {
                 if (matrix.triangular and i > j) continue;
 
                 const similarity = measure_fn(strings[i], strings[j]);
-                matrix.set(i, j, @floatCast(similarity));
+                matrix.set(i, j, @floatCast(similarity)) catch |err| {
+                    // This should not happen with valid ranges, but handle gracefully
+                    std.log.warn("Matrix set failed for ({}, {}): {}", .{ i, j, err });
+                    continue;
+                };
             }
         }
     }
@@ -211,7 +215,10 @@ fn computeWorker(ctx: *ComputeContext) void {
 
             // Thread-safe matrix update
             ctx.mutex.lock();
-            ctx.matrix.set(i, j, @floatCast(similarity));
+            ctx.matrix.set(i, j, @floatCast(similarity)) catch |err| {
+                std.log.warn("Matrix set failed for ({}, {}): {}", .{ i, j, err });
+                continue;
+            };
             ctx.mutex.unlock();
         }
     }
@@ -283,7 +290,10 @@ fn balancedWorker(ctx: *BalancedContext) void {
 
         // Thread-safe matrix update
         ctx.mutex.lock();
-        ctx.matrix.set(item.row, item.col, @floatCast(similarity));
+        ctx.matrix.set(item.row, item.col, @floatCast(similarity)) catch |err| {
+            std.log.warn("Matrix set failed for ({}, {}): {}", .{ item.row, item.col, err });
+            continue;
+        };
         ctx.mutex.unlock();
     }
 }
@@ -344,12 +354,12 @@ test "Parallel matrix computation" {
     try parallel_compute.computeMatrix(&matrix, &strings, distances.hamming);
 
     // Verify diagonal elements are 0 (strings equal to themselves)
-    try testing.expect(matrix.get(0, 0) == 0.0);
-    try testing.expect(matrix.get(1, 1) == 0.0);
-    try testing.expect(matrix.get(2, 2) == 0.0);
+    try testing.expect(try matrix.get(0, 0) == 0.0);
+    try testing.expect(try matrix.get(1, 1) == 0.0);
+    try testing.expect(try matrix.get(2, 2) == 0.0);
 
     // Verify symmetric matrix (due to triangular storage)
-    try testing.expect(matrix.get(0, 1) == matrix.get(1, 0));
+    try testing.expect(try matrix.get(0, 1) == try matrix.get(1, 0));
 }
 
 test "Single-threaded fallback" {
@@ -372,8 +382,8 @@ test "Single-threaded fallback" {
     const parallel_compute = ParallelCompute.init(allocator, config);
     try parallel_compute.computeMatrix(&matrix, &strings, distances.hamming);
 
-    try testing.expect(matrix.get(0, 0) == 0.0);
-    try testing.expect(matrix.get(1, 1) == 0.0);
+    try testing.expect(try matrix.get(0, 0) == 0.0);
+    try testing.expect(try matrix.get(1, 1) == 0.0);
 }
 
 test "Balanced parallel computation" {
@@ -398,7 +408,7 @@ test "Balanced parallel computation" {
     try parallel_compute.computeMatrixBalanced(&matrix, &strings, distances.hamming);
 
     // Verify results
-    try testing.expect(matrix.get(0, 0) == 0.0);
-    try testing.expect(matrix.get(0, 1) == 1.0); // "cat" vs "bat" differs by 1
-    try testing.expect(matrix.get(0, 2) == 1.0); // "cat" vs "rat" differs by 1
+    try testing.expect(try matrix.get(0, 0) == 0.0);
+    try testing.expect(try matrix.get(0, 1) == 1.0); // "cat" vs "bat" differs by 1
+    try testing.expect(try matrix.get(0, 2) == 1.0); // "cat" vs "rat" differs by 1
 }

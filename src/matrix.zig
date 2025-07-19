@@ -55,14 +55,16 @@ pub const Matrix = struct {
     }
 
     /// Set column range for computation
-    pub fn setColRange(self: *Self, start: usize, end: usize) void {
-        std.debug.assert(start <= end and end <= self.num);
+    pub fn setColRange(self: *Self, start: usize, end: usize) !void {
+        if (start > end) return error.InvalidRange;
+        if (end > self.num) return error.RangeOutOfBounds;
         self.col_range = Range{ .start = start, .end = end };
     }
 
     /// Set row range for computation
-    pub fn setRowRange(self: *Self, start: usize, end: usize) void {
-        std.debug.assert(start <= end and end <= self.num);
+    pub fn setRowRange(self: *Self, start: usize, end: usize) !void {
+        if (start > end) return error.InvalidRange;
+        if (end > self.num) return error.RangeOutOfBounds;
         self.row_range = Range{ .start = start, .end = end };
     }
 
@@ -90,8 +92,8 @@ pub const Matrix = struct {
     }
 
     /// Get matrix element at (row, col)
-    pub fn get(self: Self, row: usize, col: usize) f32 {
-        std.debug.assert(row < self.num and col < self.num);
+    pub fn get(self: Self, row: usize, col: usize) !f32 {
+        if (row >= self.num or col >= self.num) return error.IndexOutOfBounds;
 
         if (self.triangular) {
             const i = @min(row, col);
@@ -105,8 +107,8 @@ pub const Matrix = struct {
     }
 
     /// Set matrix element at (row, col)
-    pub fn set(self: Self, row: usize, col: usize, value: f32) void {
-        std.debug.assert(row < self.num and col < self.num);
+    pub fn set(self: Self, row: usize, col: usize, value: f32) !void {
+        if (row >= self.num or col >= self.num) return error.IndexOutOfBounds;
 
         if (self.triangular) {
             const i = @min(row, col);
@@ -120,13 +122,13 @@ pub const Matrix = struct {
     }
 
     /// Compute similarity matrix using provided measure function
-    pub fn compute(self: Self, strings: []const StringValue, measure: fn (StringValue, StringValue) f64) void {
+    pub fn compute(self: Self, strings: []const StringValue, measure: fn (StringValue, StringValue) f64) !void {
         for (self.row_range.start..self.row_range.end) |i| {
             for (self.col_range.start..self.col_range.end) |j| {
                 if (self.triangular and i > j) continue;
 
                 const similarity = measure(strings[i], strings[j]);
-                self.set(i, j, @floatCast(similarity));
+                try self.set(i, j, @floatCast(similarity));
             }
         }
     }
@@ -202,15 +204,15 @@ test "Matrix get/set operations" {
     defer matrix.deinit();
 
     // Test setting and getting values
-    matrix.set(0, 0, 1.0);
-    matrix.set(0, 1, 0.5);
-    matrix.set(1, 0, 0.5); // Should map to same location as (0,1) in triangular
-    matrix.set(1, 1, 1.0);
+    try matrix.set(0, 0, 1.0);
+    try matrix.set(0, 1, 0.5);
+    try matrix.set(1, 0, 0.5); // Should map to same location as (0,1) in triangular
+    try matrix.set(1, 1, 1.0);
 
-    try testing.expect(matrix.get(0, 0) == 1.0);
-    try testing.expect(matrix.get(0, 1) == 0.5);
-    try testing.expect(matrix.get(1, 0) == 0.5);
-    try testing.expect(matrix.get(1, 1) == 1.0);
+    try testing.expect(try matrix.get(0, 0) == 1.0);
+    try testing.expect(try matrix.get(0, 1) == 0.5);
+    try testing.expect(try matrix.get(1, 0) == 0.5);
+    try testing.expect(try matrix.get(1, 1) == 1.0);
 }
 
 test "Matrix range operations" {
@@ -228,8 +230,8 @@ test "Matrix range operations" {
     defer matrix.deinit();
 
     // Test setting ranges
-    matrix.setRowRange(1, 3);
-    matrix.setColRange(0, 2);
+    try matrix.setRowRange(1, 3);
+    try matrix.setColRange(0, 2);
 
     try testing.expect(matrix.row_range.start == 1);
     try testing.expect(matrix.row_range.end == 3);
@@ -283,11 +285,117 @@ test "Matrix computations count" {
     try testing.expect(matrix.getComputations() == 6); // 3*3 but triangular
 
     // Test with ranges
-    matrix.setRowRange(0, 2);
-    matrix.setColRange(0, 2);
+    try matrix.setRowRange(0, 2);
+    try matrix.setColRange(0, 2);
     try testing.expect(matrix.getComputations() == 3); // Only upper triangle of 2x2
 
     // Test full matrix
     try matrix.setTriangular(false);
     try testing.expect(matrix.getComputations() == 4); // Full 2x2 matrix
+}
+
+test "Matrix range validation errors" {
+    const allocator = testing.allocator;
+
+    var strings = [_]StringValue{
+        try StringValue.fromBytes(allocator, "a"),
+        try StringValue.fromBytes(allocator, "b"),
+        try StringValue.fromBytes(allocator, "c"),
+    };
+    defer for (&strings) |*s| s.deinit();
+
+    var matrix = try Matrix.init(allocator, &strings);
+    defer matrix.deinit();
+
+    // Test invalid range (start > end)
+    try testing.expectError(error.InvalidRange, matrix.setRowRange(2, 1));
+    try testing.expectError(error.InvalidRange, matrix.setColRange(3, 0));
+
+    // Test out of bounds range
+    try testing.expectError(error.RangeOutOfBounds, matrix.setRowRange(0, 4)); // matrix.num = 3
+    try testing.expectError(error.RangeOutOfBounds, matrix.setColRange(1, 5));
+
+    // Test boundary conditions - these should work
+    try matrix.setRowRange(0, 3); // Exactly matrix.num
+    try matrix.setColRange(0, 3);
+    try matrix.setRowRange(3, 3); // Empty range is valid
+    try matrix.setColRange(2, 2); // Empty range is valid
+}
+
+test "Matrix index validation errors" {
+    const allocator = testing.allocator;
+
+    var strings = [_]StringValue{
+        try StringValue.fromBytes(allocator, "a"),
+        try StringValue.fromBytes(allocator, "b"),
+    };
+    defer for (&strings) |*s| s.deinit();
+
+    var matrix = try Matrix.init(allocator, &strings);
+    defer matrix.deinit();
+
+    // Test out of bounds access for get
+    try testing.expectError(error.IndexOutOfBounds, matrix.get(2, 0)); // row >= matrix.num
+    try testing.expectError(error.IndexOutOfBounds, matrix.get(0, 2)); // col >= matrix.num
+    try testing.expectError(error.IndexOutOfBounds, matrix.get(2, 2)); // both out of bounds
+
+    // Test out of bounds access for set
+    try testing.expectError(error.IndexOutOfBounds, matrix.set(2, 0, 1.0)); // row >= matrix.num
+    try testing.expectError(error.IndexOutOfBounds, matrix.set(0, 2, 1.0)); // col >= matrix.num
+    try testing.expectError(error.IndexOutOfBounds, matrix.set(2, 2, 1.0)); // both out of bounds
+
+    // Test boundary conditions - these should work
+    try matrix.set(0, 0, 1.0);
+    try matrix.set(1, 1, 2.0);
+    try testing.expect(try matrix.get(0, 0) == 1.0);
+    try testing.expect(try matrix.get(1, 1) == 2.0);
+}
+
+test "Matrix validation with empty matrix" {
+    const allocator = testing.allocator;
+
+    const strings = [_]StringValue{};
+    var matrix = try Matrix.init(allocator, &strings);
+    defer matrix.deinit();
+
+    // Test operations on empty matrix
+    try testing.expectError(error.IndexOutOfBounds, matrix.get(0, 0));
+    try testing.expectError(error.IndexOutOfBounds, matrix.set(0, 0, 1.0));
+
+    // Range operations should work with empty ranges
+    try matrix.setRowRange(0, 0);
+    try matrix.setColRange(0, 0);
+
+    // But any non-zero range should fail
+    try testing.expectError(error.RangeOutOfBounds, matrix.setRowRange(0, 1));
+    try testing.expectError(error.RangeOutOfBounds, matrix.setColRange(0, 1));
+}
+
+test "Matrix validation with different storage modes" {
+    const allocator = testing.allocator;
+
+    var strings = [_]StringValue{
+        try StringValue.fromBytes(allocator, "a"),
+        try StringValue.fromBytes(allocator, "b"),
+        try StringValue.fromBytes(allocator, "c"),
+    };
+    defer for (&strings) |*s| s.deinit();
+
+    var matrix = try Matrix.init(allocator, &strings);
+    defer matrix.deinit();
+
+    // Test validation works in triangular mode
+    try matrix.set(0, 1, 0.5);
+    try testing.expect(try matrix.get(0, 1) == 0.5);
+    try testing.expectError(error.IndexOutOfBounds, matrix.get(3, 0));
+
+    // Switch to full mode and test validation still works
+    try matrix.setTriangular(false);
+    try matrix.set(1, 0, 0.7);
+    try testing.expect(try matrix.get(1, 0) == 0.7);
+    try testing.expectError(error.IndexOutOfBounds, matrix.set(3, 0, 1.0));
+
+    // Switch back to triangular and verify validation still works
+    try matrix.setTriangular(true);
+    try testing.expectError(error.IndexOutOfBounds, matrix.get(0, 3));
 }

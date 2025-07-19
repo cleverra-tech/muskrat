@@ -112,7 +112,7 @@ pub const TextFormatter = struct {
 
             // Write row values
             for (matrix.col_range.start..matrix.col_range.end) |j| {
-                const value = matrix.get(i, j);
+                const value = try matrix.get(i, j);
                 if (self.show_labels or j > 0) {
                     try writer.writeAll(self.field_separator);
                 }
@@ -286,7 +286,7 @@ pub const JsonFormatter = struct {
 
             for (matrix.col_range.start..matrix.col_range.end) |j| {
                 if (j > matrix.col_range.start) try writer.writeAll(", ");
-                const value = matrix.get(i, j);
+                const value = try matrix.get(i, j);
                 try writer.print("{d:.3}", .{value});
             }
             try writer.writeAll("]");
@@ -467,7 +467,7 @@ pub const BinaryFormatter = struct {
         // Write matrix data
         for (matrix.row_range.start..matrix.row_range.end) |i| {
             for (matrix.col_range.start..matrix.col_range.end) |j| {
-                const value = matrix.get(i, j);
+                const value = try matrix.get(i, j);
                 try writer.writeInt(u32, @bitCast(value), .little);
             }
         }
@@ -556,7 +556,7 @@ pub const CsvFormatter = struct {
 
             for (matrix.col_range.start..matrix.col_range.end) |j| {
                 try writer.writeByte(self.delimiter);
-                const value = matrix.get(i, j);
+                const value = try matrix.get(i, j);
                 try writer.print("{d:.3}", .{value});
             }
             try writer.writeAll("\n");
@@ -681,10 +681,10 @@ test "BinaryFormatter basic functionality" {
     var matrix = try Matrix.init(allocator, &strings);
     defer matrix.deinit();
 
-    matrix.set(0, 0, 0.0);
-    matrix.set(0, 1, 1.0);
-    matrix.set(1, 0, 1.0);
-    matrix.set(1, 1, 0.0);
+    try matrix.set(0, 0, 0.0);
+    try matrix.set(0, 1, 1.0);
+    try matrix.set(1, 0, 1.0);
+    try matrix.set(1, 1, 0.0);
 
     const metadata = OutputMetadata{
         .string_count = 2,
@@ -720,9 +720,9 @@ test "BinaryFormatter with all string types" {
     defer matrix.deinit();
 
     // Set some test values
-    matrix.set(0, 1, 0.5);
-    matrix.set(1, 2, 0.8);
-    matrix.set(0, 2, 0.3);
+    try matrix.set(0, 1, 0.5);
+    try matrix.set(1, 2, 0.8);
+    try matrix.set(0, 2, 0.3);
 
     const metadata = OutputMetadata{
         .string_count = 3,
@@ -752,10 +752,10 @@ test "CsvFormatter basic functionality" {
     var matrix = try Matrix.init(allocator, &strings);
     defer matrix.deinit();
 
-    matrix.set(0, 0, 0.0);
-    matrix.set(0, 1, 0.5);
-    matrix.set(1, 0, 0.5);
-    matrix.set(1, 1, 0.0);
+    try matrix.set(0, 0, 0.0);
+    try matrix.set(0, 1, 0.5);
+    try matrix.set(1, 0, 0.5);
+    try matrix.set(1, 1, 0.0);
 
     const output = try formatter.formatMatrix(&matrix, &strings, null);
     defer allocator.free(output);

@@ -91,23 +91,23 @@ fn testMatrixOperations(allocator: Allocator) !void {
     try testing.expect(matrix.col_range.length() == 3);
 
     // Test matrix operations
-    matrix.set(0, 1, 0.5);
-    matrix.set(1, 2, 0.8);
-    matrix.set(2, 0, 0.3);
+    try matrix.set(0, 1, 0.5);
+    try matrix.set(1, 2, 0.8);
+    try matrix.set(2, 0, 0.3);
 
-    try testing.expect(matrix.get(0, 1) == 0.5);
-    try testing.expect(matrix.get(1, 2) == 0.8);
-    try testing.expect(matrix.get(2, 0) == 0.3);
+    try testing.expect(try matrix.get(0, 1) == 0.5);
+    try testing.expect(try matrix.get(1, 2) == 0.8);
+    try testing.expect(try matrix.get(2, 0) == 0.3);
 
     // Test symmetry for triangular matrices
     if (matrix.triangular) {
-        try testing.expect(matrix.get(1, 0) == matrix.get(0, 1));
+        try testing.expect(try matrix.get(1, 0) == try matrix.get(0, 1));
     }
 
     // Test diagonal is zero
-    try testing.expect(matrix.get(0, 0) == 0.0);
-    try testing.expect(matrix.get(1, 1) == 0.0);
-    try testing.expect(matrix.get(2, 2) == 0.0);
+    try testing.expect(try matrix.get(0, 0) == 0.0);
+    try testing.expect(try matrix.get(1, 1) == 0.0);
+    try testing.expect(try matrix.get(2, 2) == 0.0);
 }
 
 fn testParallelComputation(allocator: Allocator) !void {
@@ -146,7 +146,7 @@ fn testParallelComputation(allocator: Allocator) !void {
         for (matrix.row_range.start..matrix.row_range.end) |i| {
             for (matrix.col_range.start..matrix.col_range.end) |j| {
                 if (i != j) {
-                    try testing.expect(matrix.get(i, j) >= 0.0);
+                    try testing.expect(try matrix.get(i, j) >= 0.0);
                     computed_pairs += 1;
                 }
             }
@@ -267,8 +267,8 @@ fn testOutputFormatters(allocator: Allocator) !void {
     var matrix = try muskrat.Matrix.init(allocator, &strings);
     defer matrix.deinit();
 
-    matrix.set(0, 1, 0.75);
-    matrix.set(1, 0, 0.75);
+    try matrix.set(0, 1, 0.75);
+    try matrix.set(1, 0, 0.75);
 
     const metadata = muskrat.formatters.OutputMetadata{
         .string_count = 2,
@@ -426,8 +426,8 @@ test "Memory usage validation" {
     defer matrix.deinit();
 
     // Perform operations that should not leak
-    matrix.set(0, 1, 0.5);
-    _ = matrix.get(0, 1);
+    try matrix.set(0, 1, 0.5);
+    _ = try matrix.get(0, 1);
 
     // Test passes if no leaks detected by testing allocator
 }
