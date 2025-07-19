@@ -2,6 +2,7 @@ const std = @import("std");
 const testing = std.testing;
 const Allocator = std.mem.Allocator;
 const StringValue = @import("string.zig").StringValue;
+const Symbol = @import("string.zig").Symbol;
 const Matrix = @import("matrix.zig").Matrix;
 
 /// Metadata for output formatting
@@ -142,13 +143,26 @@ pub const TextFormatter = struct {
                 try writer.print("{}{s}", .{ i, self.field_separator });
             }
 
-            const data = switch (string.data) {
-                .byte => |bytes| bytes,
-                .token => |_| "<token>", // Placeholder for token data
-                .bit => |_| "<bit>", // Placeholder for bit data
-            };
+            switch (string.data) {
+                .byte => |bytes| try writer.writeAll(bytes),
+                .token => |tokens| {
+                    // Format tokens as comma-separated list: [1,2,3]
+                    try writer.writeAll("[");
+                    for (tokens, 0..) |token, j| {
+                        if (j > 0) try writer.writeAll(",");
+                        try writer.print("{d}", .{token});
+                    }
+                    try writer.writeAll("]");
+                },
+                .bit => |bits| {
+                    // Format bits as hexadecimal: 0x1a2b3c
+                    try writer.writeAll("0x");
+                    for (bits) |byte| {
+                        try writer.print("{x:0>2}", .{byte});
+                    }
+                },
+            }
 
-            try writer.writeAll(data);
             if (string.label) |label| {
                 try writer.print("{s}{d:.3}", .{ self.field_separator, label });
             }
@@ -226,15 +240,30 @@ pub const JsonFormatter = struct {
             if (i > 0) try writer.writeAll(",\n");
             try writer.writeAll("    {\n");
             try writer.print("      \"index\": {},\n", .{i});
+            try writer.print("      \"type\": \"{s}\",\n", .{@tagName(string.data)});
+            try writer.writeAll("      \"content\": ");
 
-            const data = switch (string.data) {
-                .byte => |bytes| bytes,
-                .token => |_| "<token>",
-                .bit => |_| "<bit>",
-            };
-
-            try std.json.stringify(data, .{}, writer);
-            try writer.writeAll("\n");
+            switch (string.data) {
+                .byte => |bytes| try std.json.stringify(bytes, .{}, writer),
+                .token => |tokens| {
+                    // Serialize tokens as JSON array of numbers
+                    try writer.writeAll("[");
+                    for (tokens, 0..) |token, j| {
+                        if (j > 0) try writer.writeAll(",");
+                        try writer.print("{d}", .{token});
+                    }
+                    try writer.writeAll("]");
+                },
+                .bit => |bits| {
+                    // Serialize bits as JSON array of bytes (for readability)
+                    try writer.writeAll("[");
+                    for (bits, 0..) |byte, j| {
+                        if (j > 0) try writer.writeAll(",");
+                        try writer.print("{d}", .{byte});
+                    }
+                    try writer.writeAll("]");
+                },
+            }
 
             if (string.label) |label| {
                 try writer.print(",\n      \"label\": {d:.3}", .{label});
@@ -293,14 +322,30 @@ pub const JsonFormatter = struct {
             try writer.writeAll("    {\n");
             try writer.print("      \"index\": {},\n", .{i});
 
-            const data = switch (string.data) {
-                .byte => |bytes| bytes,
-                .token => |_| "<token>",
-                .bit => |_| "<bit>",
-            };
-
+            try writer.print("      \"type\": \"{s}\",\n", .{@tagName(string.data)});
             try writer.writeAll("      \"content\": ");
-            try std.json.stringify(data, .{}, writer);
+
+            switch (string.data) {
+                .byte => |bytes| try std.json.stringify(bytes, .{}, writer),
+                .token => |tokens| {
+                    // Serialize tokens as JSON array of numbers
+                    try writer.writeAll("[");
+                    for (tokens, 0..) |token, j| {
+                        if (j > 0) try writer.writeAll(",");
+                        try writer.print("{d}", .{token});
+                    }
+                    try writer.writeAll("]");
+                },
+                .bit => |bits| {
+                    // Serialize bits as JSON array of bytes (for readability)
+                    try writer.writeAll("[");
+                    for (bits, 0..) |byte, j| {
+                        if (j > 0) try writer.writeAll(",");
+                        try writer.print("{d}", .{byte});
+                    }
+                    try writer.writeAll("]");
+                },
+            }
 
             if (string.label) |label| {
                 try writer.print(",\n      \"label\": {d:.3}", .{label});
@@ -385,14 +430,26 @@ pub const BinaryFormatter = struct {
 
         // Write strings
         for (strings) |string| {
-            const data = switch (string.data) {
-                .byte => |bytes| bytes,
-                .token => |_| "", // Skip token data in binary format
-                .bit => |_| "", // Skip bit data in binary format
-            };
+            // Write string type first
+            try writer.writeInt(u8, @intFromEnum(string.data), .little);
 
-            try writer.writeInt(u32, @intCast(data.len), .little);
-            try writer.writeAll(data);
+            switch (string.data) {
+                .byte => |bytes| {
+                    try writer.writeInt(u32, @intCast(bytes.len), .little);
+                    try writer.writeAll(bytes);
+                },
+                .token => |tokens| {
+                    try writer.writeInt(u32, @intCast(tokens.len), .little);
+                    for (tokens) |token| {
+                        try writer.writeInt(u64, token, .little);
+                    }
+                },
+                .bit => |bits| {
+                    try writer.writeInt(u32, @intCast(string.len), .little); // bit count
+                    try writer.writeInt(u32, @intCast(bits.len), .little); // byte count
+                    try writer.writeAll(bits);
+                },
+            }
 
             // Write label
             const has_label: u8 = if (string.label != null) 1 else 0;
@@ -640,6 +697,45 @@ test "BinaryFormatter basic functionality" {
     // Check magic number
     try testing.expect(output.len >= 4);
     try testing.expect(std.mem.eql(u8, output[0..4], "MUSK"));
+}
+
+test "BinaryFormatter with all string types" {
+    const allocator = testing.allocator;
+
+    var formatter = BinaryFormatter.init(allocator);
+
+    // Test with byte, token, and bit string types
+    const tokens = [_]Symbol{ 1, 2, 3 };
+    const bits = [_]u8{0b10110100}; // Sample bit pattern
+
+    var strings = [_]StringValue{
+        try StringValue.fromBytes(allocator, "hello"),
+        try StringValue.fromTokens(allocator, &tokens),
+        try StringValue.fromBits(allocator, &bits, 8),
+    };
+    defer for (&strings) |*s| s.deinit();
+
+    // Create a 3x3 matrix for testing
+    var matrix = try Matrix.init(allocator, &strings);
+    defer matrix.deinit();
+
+    // Set some test values
+    matrix.set(0, 1, 0.5);
+    matrix.set(1, 2, 0.8);
+    matrix.set(0, 2, 0.3);
+
+    const metadata = OutputMetadata{
+        .string_count = 3,
+        .matrix_size = .{ .rows = 3, .cols = 3 },
+    };
+
+    const output = try formatter.formatMatrix(&matrix, &strings, metadata);
+    defer allocator.free(output);
+
+    // Check magic number and that we have substantial output
+    try testing.expect(output.len >= 4);
+    try testing.expect(std.mem.eql(u8, output[0..4], "MUSK"));
+    try testing.expect(output.len > 50); // Should have meaningful binary data
 }
 
 test "CsvFormatter basic functionality" {
