@@ -3,6 +3,11 @@ const testing = std.testing;
 const Allocator = std.mem.Allocator;
 const StringValue = @import("string.zig").StringValue;
 
+/// Buffer size constants for readers
+pub const DEFAULT_MAX_LINE_LENGTH: usize = 64 * 1024; // 64KB
+pub const DEFAULT_MAX_FILE_SIZE: usize = 100 * 1024 * 1024; // 100MB
+pub const STDIN_BUFFER_SIZE: usize = 64 * 1024; // 64KB
+
 /// Generic reader interface for string input
 pub const StringReader = struct {
     allocator: Allocator,
@@ -63,7 +68,7 @@ pub const FileReader = struct {
         return Self{
             .reader = StringReader.init(allocator),
             .separator = "\n",
-            .max_line_length = 64 * 1024, // 64KB default
+            .max_line_length = DEFAULT_MAX_LINE_LENGTH,
         };
     }
 
@@ -97,7 +102,7 @@ pub const FileReader = struct {
         };
         defer file.close();
 
-        const contents = try file.readToEndAlloc(self.reader.allocator, 100 * 1024 * 1024); // 100MB limit
+        const contents = try file.readToEndAlloc(self.reader.allocator, DEFAULT_MAX_FILE_SIZE);
         defer self.reader.allocator.free(contents);
 
         try self.parseContent(contents);
@@ -141,7 +146,7 @@ pub const StdinReader = struct {
         return Self{
             .reader = StringReader.init(allocator),
             .separator = "\n",
-            .max_line_length = 64 * 1024,
+            .max_line_length = STDIN_BUFFER_SIZE,
         };
     }
 
