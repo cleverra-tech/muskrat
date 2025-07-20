@@ -168,87 +168,189 @@ pub const SubsequenceKernel = struct {
             },
             .token => |tokens1| {
                 const tokens2 = str2.data.token;
-                return self.computeTokenSubsequence(tokens1, tokens2);
+                return try self.computeTokenSubsequence(tokens1, tokens2);
             },
             .bit => |bits1| {
                 const bits2 = str2.data.bit;
-                return self.computeBitSubsequence(bits1, bits2, str1.len, str2.len);
+                return try self.computeBitSubsequence(bits1, bits2, str1.len, str2.len);
             },
         }
     }
 
     /// Compute subsequence kernel for byte strings
     fn computeByteSubsequence(self: Self, data1: []const u8, data2: []const u8) !f64 {
-        // Dynamic programming approach
-        var dp = try self.allocator.alloc([]f64, data1.len + 1);
+        // Use full dynamic programming for all values of k
+        return self.computeDPBytes(data1, data2);
+    }
+
+    /// Full dynamic programming implementation for byte subsequence kernel
+    fn computeDPBytes(self: Self, s: []const u8, t: []const u8) !f64 {
+        const n = s.len;
+        const m = t.len;
+
+        // Create 3D DP table: dp[i][j][k] = kernel value for s[0..i], t[0..j], length k
+        var dp = try self.allocator.alloc([][]f64, n + 1);
         defer self.allocator.free(dp);
 
         for (0..dp.len) |i| {
-            dp[i] = try self.allocator.alloc(f64, data2.len + 1);
-        }
-        defer for (dp) |row| self.allocator.free(row);
-
-        // Initialize base cases
-        for (0..dp.len) |i| {
+            dp[i] = try self.allocator.alloc([]f64, m + 1);
             for (0..dp[i].len) |j| {
-                dp[i][j] = 0.0;
+                dp[i][j] = try self.allocator.alloc(f64, self.k + 1);
+                // Initialize all values to 0
+                @memset(dp[i][j], 0.0);
+            }
+        }
+        defer for (dp) |row| {
+            for (row) |col| self.allocator.free(col);
+            self.allocator.free(row);
+        };
+
+        // Base case: empty subsequence has kernel value 1
+        for (0..n + 1) |i| {
+            for (0..m + 1) |j| {
+                dp[i][j][0] = 1.0;
             }
         }
 
-        // Fill DP table for k=1
-        if (self.k == 1) {
-            for (1..dp.len) |i| {
-                for (1..dp[i].len) |j| {
-                    dp[i][j] = dp[i - 1][j] + dp[i][j - 1];
-                    if (data1[i - 1] == data2[j - 1]) {
-                        dp[i][j] += self.lambda * self.lambda;
+        // Fill DP table
+        for (1..self.k + 1) |k| {
+            for (1..n + 1) |i| {
+                for (1..m + 1) |j| {
+                    // Case 1: Don't include s[i-1] in subsequence
+                    dp[i][j][k] = self.lambda * dp[i - 1][j][k];
+
+                    // Case 2: Don't include t[j-1] in subsequence
+                    dp[i][j][k] += self.lambda * dp[i][j - 1][k];
+
+                    // Case 3: Include both s[i-1] and t[j-1] if they match
+                    if (s[i - 1] == t[j - 1]) {
+                        dp[i][j][k] += self.lambda * self.lambda * dp[i - 1][j - 1][k - 1];
                     }
-                    dp[i][j] *= self.lambda;
+
+                    // Case 4: Remove double counting from cases 1 and 2
+                    dp[i][j][k] -= self.lambda * self.lambda * dp[i - 1][j - 1][k];
                 }
             }
-            return dp[data1.len][data2.len];
         }
 
-        // For k > 1, use recursive approach (simplified)
-        return self.computeRecursiveBytes(data1, data2, self.k);
+        return dp[n][m][self.k];
     }
 
     /// Compute subsequence kernel for token strings
-    fn computeTokenSubsequence(self: Self, tokens1: []const u64, tokens2: []const u64) f64 {
-        if (self.k == 1) {
-            var count: f64 = 0.0;
-            for (tokens1) |t1| {
-                for (tokens2) |t2| {
-                    if (t1 == t2) {
-                        count += self.lambda * self.lambda;
-                    }
-                }
+    fn computeTokenSubsequence(self: Self, tokens1: []const u64, tokens2: []const u64) !f64 {
+        // Use full dynamic programming for all values of k
+        return self.computeDPTokens(tokens1, tokens2);
+    }
+
+    /// Full dynamic programming implementation for token subsequence kernel
+    fn computeDPTokens(self: Self, s: []const u64, t: []const u64) !f64 {
+        const n = s.len;
+        const m = t.len;
+
+        // Create 3D DP table: dp[i][j][k] = kernel value for s[0..i], t[0..j], length k
+        var dp = try self.allocator.alloc([][]f64, n + 1);
+        defer self.allocator.free(dp);
+
+        for (0..dp.len) |i| {
+            dp[i] = try self.allocator.alloc([]f64, m + 1);
+            for (0..dp[i].len) |j| {
+                dp[i][j] = try self.allocator.alloc(f64, self.k + 1);
+                // Initialize all values to 0
+                @memset(dp[i][j], 0.0);
             }
-            return count;
+        }
+        defer for (dp) |row| {
+            for (row) |col| self.allocator.free(col);
+            self.allocator.free(row);
+        };
+
+        // Base case: empty subsequence has kernel value 1
+        for (0..n + 1) |i| {
+            for (0..m + 1) |j| {
+                dp[i][j][0] = 1.0;
+            }
         }
 
-        // For k > 1, use recursive approach with tokens
-        return self.computeRecursiveTokens(tokens1, tokens2, self.k);
+        // Fill DP table
+        for (1..self.k + 1) |k| {
+            for (1..n + 1) |i| {
+                for (1..m + 1) |j| {
+                    // Case 1: Don't include s[i-1] in subsequence
+                    dp[i][j][k] = self.lambda * dp[i - 1][j][k];
+
+                    // Case 2: Don't include t[j-1] in subsequence
+                    dp[i][j][k] += self.lambda * dp[i][j - 1][k];
+
+                    // Case 3: Include both s[i-1] and t[j-1] if they match
+                    if (s[i - 1] == t[j - 1]) {
+                        dp[i][j][k] += self.lambda * self.lambda * dp[i - 1][j - 1][k - 1];
+                    }
+
+                    // Case 4: Remove double counting from cases 1 and 2
+                    dp[i][j][k] -= self.lambda * self.lambda * dp[i - 1][j - 1][k];
+                }
+            }
+        }
+
+        return dp[n][m][self.k];
     }
 
     /// Compute subsequence kernel for bit strings
-    fn computeBitSubsequence(self: Self, bits1: []const u8, bits2: []const u8, len1: usize, len2: usize) f64 {
-        if (self.k == 1) {
-            var count: f64 = 0.0;
-            for (0..len1) |i| {
-                for (0..len2) |j| {
-                    const bit1 = self.getBit(bits1, i);
-                    const bit2 = self.getBit(bits2, j);
-                    if (bit1 == bit2) {
-                        count += self.lambda * self.lambda;
-                    }
-                }
+    fn computeBitSubsequence(self: Self, bits1: []const u8, bits2: []const u8, len1: usize, len2: usize) !f64 {
+        // Use full dynamic programming for all values of k
+        return self.computeDPBits(bits1, bits2, len1, len2);
+    }
+
+    /// Full dynamic programming implementation for bit subsequence kernel
+    fn computeDPBits(self: Self, bits1: []const u8, bits2: []const u8, n: usize, m: usize) !f64 {
+        // Create 3D DP table: dp[i][j][k] = kernel value for bits1[0..i], bits2[0..j], length k
+        var dp = try self.allocator.alloc([][]f64, n + 1);
+        defer self.allocator.free(dp);
+
+        for (0..dp.len) |i| {
+            dp[i] = try self.allocator.alloc([]f64, m + 1);
+            for (0..dp[i].len) |j| {
+                dp[i][j] = try self.allocator.alloc(f64, self.k + 1);
+                // Initialize all values to 0
+                @memset(dp[i][j], 0.0);
             }
-            return count;
+        }
+        defer for (dp) |row| {
+            for (row) |col| self.allocator.free(col);
+            self.allocator.free(row);
+        };
+
+        // Base case: empty subsequence has kernel value 1
+        for (0..n + 1) |i| {
+            for (0..m + 1) |j| {
+                dp[i][j][0] = 1.0;
+            }
         }
 
-        // For k > 1, use recursive approach with bits
-        return self.computeRecursiveBits(bits1, bits2, len1, len2, self.k);
+        // Fill DP table
+        for (1..self.k + 1) |k| {
+            for (1..n + 1) |i| {
+                for (1..m + 1) |j| {
+                    // Case 1: Don't include bits1[i-1] in subsequence
+                    dp[i][j][k] = self.lambda * dp[i - 1][j][k];
+
+                    // Case 2: Don't include bits2[j-1] in subsequence
+                    dp[i][j][k] += self.lambda * dp[i][j - 1][k];
+
+                    // Case 3: Include both bits1[i-1] and bits2[j-1] if they match
+                    const bit1 = self.getBit(bits1, i - 1);
+                    const bit2 = self.getBit(bits2, j - 1);
+                    if (bit1 == bit2) {
+                        dp[i][j][k] += self.lambda * self.lambda * dp[i - 1][j - 1][k - 1];
+                    }
+
+                    // Case 4: Remove double counting from cases 1 and 2
+                    dp[i][j][k] -= self.lambda * self.lambda * dp[i - 1][j - 1][k];
+                }
+            }
+        }
+
+        return dp[n][m][self.k];
     }
 
     /// Get bit at position from bit array
@@ -257,71 +359,6 @@ pub const SubsequenceKernel = struct {
         const byte_idx = pos / 8;
         const bit_idx = @as(u3, @intCast(pos % 8));
         return @intCast((bits[byte_idx] >> (7 - bit_idx)) & 1);
-    }
-
-    /// Recursive computation for byte subsequence kernel
-    fn computeRecursiveBytes(self: Self, s1: []const u8, s2: []const u8, k: usize) f64 {
-        if (k == 0) return 1.0;
-        if (s1.len < k or s2.len < k) return 0.0;
-
-        var sum: f64 = 0.0;
-
-        // Find matching characters
-        for (0..s1.len) |i| {
-            for (0..s2.len) |j| {
-                if (s1[i] == s2[j]) {
-                    const penalty = std.math.pow(f64, self.lambda, @as(f64, @floatFromInt(i + j + 2)));
-                    sum += penalty * self.computeRecursiveBytes(s1[i + 1 ..], s2[j + 1 ..], k - 1);
-                }
-            }
-        }
-
-        return sum;
-    }
-
-    /// Recursive computation for token subsequence kernel
-    fn computeRecursiveTokens(self: Self, s1: []const u64, s2: []const u64, k: usize) f64 {
-        if (k == 0) return 1.0;
-        if (s1.len < k or s2.len < k) return 0.0;
-
-        var sum: f64 = 0.0;
-
-        // Find matching tokens
-        for (0..s1.len) |i| {
-            for (0..s2.len) |j| {
-                if (s1[i] == s2[j]) {
-                    const penalty = std.math.pow(f64, self.lambda, @as(f64, @floatFromInt(i + j + 2)));
-                    sum += penalty * self.computeRecursiveTokens(s1[i + 1 ..], s2[j + 1 ..], k - 1);
-                }
-            }
-        }
-
-        return sum;
-    }
-
-    /// Recursive computation for bit subsequence kernel
-    fn computeRecursiveBits(self: Self, bits1: []const u8, bits2: []const u8, len1: usize, len2: usize, k: usize) f64 {
-        if (k == 0) return 1.0;
-        if (len1 < k or len2 < k) return 0.0;
-
-        var sum: f64 = 0.0;
-
-        // Find matching bits
-        for (0..len1) |i| {
-            for (0..len2) |j| {
-                const bit1 = self.getBit(bits1, i);
-                const bit2 = self.getBit(bits2, j);
-                if (bit1 == bit2) {
-                    const penalty = std.math.pow(f64, self.lambda, @as(f64, @floatFromInt(i + j + 2)));
-                    // For recursive call, we need to adjust the bit arrays and lengths
-                    const remaining_len1 = len1 - i - 1;
-                    const remaining_len2 = len2 - j - 1;
-                    sum += penalty * self.computeRecursiveBits(bits1, bits2, remaining_len1, remaining_len2, k - 1);
-                }
-            }
-        }
-
-        return sum;
     }
 };
 
@@ -603,6 +640,74 @@ test "SubsequenceKernel edge cases" {
     kernel.lambda = 1.0;
     const sim3 = try kernel.compute(str1, str2);
     try testing.expect(sim3 == 0.0);
+}
+
+test "SubsequenceKernel dynamic programming k>1" {
+    const allocator = testing.allocator;
+
+    // Test with k=2
+    var kernel = SubsequenceKernel.init(allocator, 2, 0.5);
+
+    var str1 = try StringValue.fromBytes(allocator, "abc");
+    defer str1.deinit();
+
+    var str2 = try StringValue.fromBytes(allocator, "abc");
+    defer str2.deinit();
+
+    // Identical strings should have positive similarity
+    const sim1 = try kernel.compute(str1, str2);
+    try testing.expect(sim1 > 0.0);
+
+    // Test with different strings that share subsequences
+    var str3 = try StringValue.fromBytes(allocator, "axbxc");
+    defer str3.deinit();
+
+    const sim2 = try kernel.compute(str1, str3);
+    try testing.expect(sim2 > 0.0); // Should find subsequences like "ab", "ac", "bc"
+
+    // Test with k=3
+    kernel.k = 3;
+    const sim3 = try kernel.compute(str1, str2);
+    try testing.expect(sim3 > 0.0); // Should find subsequence "abc"
+
+    const sim4 = try kernel.compute(str1, str3);
+    try testing.expect(sim4 > 0.0); // Should find subsequence "abc"
+}
+
+test "SubsequenceKernel dynamic programming with tokens k>1" {
+    const allocator = testing.allocator;
+
+    var kernel = SubsequenceKernel.init(allocator, 2, 0.5);
+
+    const tokens1 = [_]Symbol{ 1, 2, 3 };
+    const tokens2 = [_]Symbol{ 1, 4, 2, 5, 3 };
+
+    var str1 = try StringValue.fromTokens(allocator, &tokens1);
+    defer str1.deinit();
+
+    var str2 = try StringValue.fromTokens(allocator, &tokens2);
+    defer str2.deinit();
+
+    const sim = try kernel.compute(str1, str2);
+    try testing.expect(sim > 0.0); // Should find subsequences like [1,2], [1,3], [2,3]
+}
+
+test "SubsequenceKernel dynamic programming with bits k>1" {
+    const allocator = testing.allocator;
+
+    var kernel = SubsequenceKernel.init(allocator, 2, 0.5);
+
+    const bits1 = [_]u8{0b11100000}; // 3 bits: 111
+    const bits2 = [_]u8{0b10101000}; // 3 bits: 101
+
+    var str1 = try StringValue.fromBits(allocator, &bits1, 3);
+    defer str1.deinit();
+
+    var str2 = try StringValue.fromBits(allocator, &bits2, 3);
+    defer str2.deinit();
+
+    const sim = try kernel.compute(str1, str2);
+    try testing.expect(sim > 0.0); // Should find some matching bit subsequences
 }
 
 test "WeightedDegreeKernel basic functionality" {
