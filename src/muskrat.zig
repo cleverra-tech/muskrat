@@ -1,3 +1,35 @@
+//! Muskrat - A comprehensive string similarity computation library
+//!
+//! This library provides efficient implementations of various string distance measures,
+//! similarity coefficients, and kernel functions for analyzing text similarity.
+//!
+//! Features:
+//! - Multiple string representations (byte, token, bit)
+//! - Distance measures (Hamming, Levenshtein, Jaro, Jaro-Winkler)
+//! - Similarity coefficients (Jaccard, Dice, Simpson, Cosine)
+//! - Kernel functions (spectrum, subsequence, mismatch)
+//! - SIMD optimizations for performance
+//! - Parallel computation support
+//! - Multiple output formats (text, JSON, binary, CSV)
+//! - Memory pooling and efficient allocation
+//! - Comprehensive benchmarking and testing
+//!
+//! Basic usage:
+//! ```zig
+//! const muskrat = @import("muskrat");
+//!
+//! // Create string values
+//! const str1 = try muskrat.StringValue.fromBytes(allocator, "hello");
+//! const str2 = try muskrat.StringValue.fromBytes(allocator, "world");
+//!
+//! // Compute distance
+//! const hamming_dist = muskrat.distances.hamming(str1, str2);
+//!
+//! // Create and populate similarity matrix
+//! var matrix = try muskrat.Matrix.init(allocator, &[_]muskrat.StringValue{str1, str2});
+//! defer matrix.deinit();
+//! ```
+
 const std = @import("std");
 const testing = std.testing;
 

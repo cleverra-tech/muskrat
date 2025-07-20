@@ -1,3 +1,17 @@
+//! String distance measure implementations
+//!
+//! This module provides efficient implementations of various string distance measures
+//! commonly used in text similarity analysis and computational linguistics.
+//!
+//! Supported distance measures:
+//! - Hamming distance: Character-by-character differences for equal-length strings
+//! - Levenshtein distance: Minimum edit operations (insertions, deletions, substitutions)
+//! - Jaro distance: Character matching with transposition penalties
+//! - Jaro-Winkler distance: Jaro distance with common prefix bonus
+//!
+//! All distance functions automatically leverage SIMD optimizations when beneficial
+//! and fall back to scalar implementations for maximum compatibility.
+
 const std = @import("std");
 const testing = std.testing;
 const Allocator = std.mem.Allocator;

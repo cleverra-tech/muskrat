@@ -1,3 +1,16 @@
+//! String kernel function implementations
+//!
+//! This module provides string kernel functions commonly used in machine learning
+//! and natural language processing for computing similarities between strings.
+//!
+//! Supported kernel functions:
+//! - Spectrum kernel: Compares k-gram frequency distributions
+//! - Subsequence kernel: Measures common subsequences with decay factors
+//! - Mismatch kernel: Spectrum kernel with allowed mismatches
+//!
+//! Kernels provide positive semi-definite similarity measures that can be used
+//! in kernel-based machine learning algorithms like Support Vector Machines.
+
 const std = @import("std");
 const testing = std.testing;
 const Allocator = std.mem.Allocator;

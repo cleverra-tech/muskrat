@@ -1,3 +1,17 @@
+//! Comprehensive test suite for the Muskrat library
+//!
+//! This module provides a comprehensive test suite that validates all major
+//! functionality of the Muskrat string similarity library, including:
+//! - String type operations (byte, token, bit representations)
+//! - Distance measure computations
+//! - Matrix operations and range handling
+//! - Parallel computation capabilities
+//! - Kernel function implementations
+//! - Similarity coefficient calculations
+//! - Input/output operations
+//! - Memory management and pooling
+//! - Configuration loading and validation
+
 const std = @import("std");
 const testing = std.testing;
 const Allocator = std.mem.Allocator;

@@ -1,3 +1,17 @@
+//! String similarity coefficient implementations
+//!
+//! This module provides similarity coefficient functions based on set operations
+//! that measure overlap between string representations.
+//!
+//! Supported coefficients:
+//! - Jaccard coefficient: |A ∩ B| / |A ∪ B| (intersection over union)
+//! - Dice coefficient: 2|A ∩ B| / (|A| + |B|) (harmonic mean of precision/recall)
+//! - Simpson coefficient: |A ∩ B| / min(|A|, |B|) (overlap coefficient)
+//! - Cosine coefficient: |A ∩ B| / sqrt(|A| * |B|) (cosine similarity)
+//!
+//! Each coefficient supports both n-gram based and character-based computation
+//! modes for flexible string comparison strategies.
+
 const std = @import("std");
 const testing = std.testing;
 const Allocator = std.mem.Allocator;
