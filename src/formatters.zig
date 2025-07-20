@@ -244,42 +244,48 @@ pub const JsonFormatter = struct {
         defer output.deinit();
 
         const writer = output.writer();
-        _ = self.pretty_print; // Unused but preserved for future use
+
+        // Choose formatting based on pretty_print setting
+        const indent1 = if (self.pretty_print) "  " else "";
+        const indent2 = if (self.pretty_print) "    " else "";
+        const indent3 = if (self.pretty_print) "      " else "";
+        const newline = if (self.pretty_print) "\n" else "";
+        const space = if (self.pretty_print) " " else "";
 
         // Build JSON structure
-        try writer.writeAll("{\n");
+        try writer.print("{{{s}", .{newline});
 
         // Write metadata
         if (self.formatter.include_metadata and metadata != null) {
-            try self.writeJsonMetadata(writer, metadata.?);
-            try writer.writeAll(",\n");
+            try self.writeJsonMetadata(writer, metadata.?, self.pretty_print);
+            try writer.print(",{s}", .{newline});
         }
 
         // Write strings array
-        try writer.writeAll("  \"strings\": [\n");
+        try writer.print("{s}\"strings\":{s}[{s}", .{ indent1, space, newline });
         for (strings, 0..) |string, i| {
-            if (i > 0) try writer.writeAll(",\n");
-            try writer.writeAll("    {\n");
-            try writer.print("      \"index\": {},\n", .{i});
-            try writer.print("      \"type\": \"{s}\",\n", .{@tagName(string.data)});
-            try writer.writeAll("      \"content\": ");
+            if (i > 0) try writer.print(",{s}", .{newline});
+            try writer.print("{s}{{{s}", .{ indent2, newline });
+            try writer.print("{s}\"index\":{s}{},{s}", .{ indent3, space, i, newline });
+            try writer.print("{s}\"type\":{s}\"{s}\",{s}", .{ indent3, space, @tagName(string.data), newline });
+            try writer.print("{s}\"content\":{s}", .{ indent3, space });
 
             switch (string.data) {
                 .byte => |bytes| try std.json.stringify(bytes, .{}, writer),
                 .token => |tokens| {
-                    // Serialize tokens as JSON array of numbers
                     try writer.writeAll("[");
                     for (tokens, 0..) |token, j| {
                         if (j > 0) try writer.writeAll(",");
+                        if (self.pretty_print and j > 0) try writer.writeAll(" ");
                         try writer.print("{d}", .{token});
                     }
                     try writer.writeAll("]");
                 },
                 .bit => |bits| {
-                    // Serialize bits as JSON array of bytes (for readability)
                     try writer.writeAll("[");
                     for (bits, 0..) |byte, j| {
                         if (j > 0) try writer.writeAll(",");
+                        if (self.pretty_print and j > 0) try writer.writeAll(" ");
                         try writer.print("{d}", .{byte});
                     }
                     try writer.writeAll("]");
@@ -287,35 +293,36 @@ pub const JsonFormatter = struct {
             }
 
             if (string.label) |label| {
-                try writer.print(",\n      \"label\": {d:.3}", .{label});
+                try writer.print(",{s}{s}\"label\":{s}{d:.3}", .{ newline, indent3, space, label });
             }
 
-            try writer.writeAll("\n    }");
+            try writer.print("{s}{s}}}", .{ newline, indent2 });
         }
-        try writer.writeAll("\n  ],\n");
+        try writer.print("{s}{s}],{s}", .{ newline, indent1, newline });
 
         // Write matrix data
-        try writer.writeAll("  \"matrix\": {\n");
-        try writer.print("    \"rows\": {},\n", .{matrix.row_range.length()});
-        try writer.print("    \"cols\": {},\n", .{matrix.col_range.length()});
-        try writer.print("    \"triangular\": {},\n", .{matrix.triangular});
-        try writer.writeAll("    \"data\": [\n");
+        try writer.print("{s}\"matrix\":{s}{{{s}", .{ indent1, space, newline });
+        try writer.print("{s}\"rows\":{s}{},{s}", .{ indent2, space, matrix.row_range.length(), newline });
+        try writer.print("{s}\"cols\":{s}{},{s}", .{ indent2, space, matrix.col_range.length(), newline });
+        try writer.print("{s}\"triangular\":{s}{},{s}", .{ indent2, space, matrix.triangular, newline });
+        try writer.print("{s}\"data\":{s}[{s}", .{ indent2, space, newline });
 
         for (matrix.row_range.start..matrix.row_range.end) |i| {
-            if (i > matrix.row_range.start) try writer.writeAll(",\n");
-            try writer.writeAll("      [");
+            if (i > matrix.row_range.start) try writer.print(",{s}", .{newline});
+            try writer.print("{s}[", .{indent3});
 
             for (matrix.col_range.start..matrix.col_range.end) |j| {
-                if (j > matrix.col_range.start) try writer.writeAll(", ");
+                if (j > matrix.col_range.start) try writer.writeAll(",");
+                if (self.pretty_print and j > matrix.col_range.start) try writer.writeAll(" ");
                 const value = try matrix.get(i, j);
                 try writer.print("{d:.3}", .{value});
             }
             try writer.writeAll("]");
         }
 
-        try writer.writeAll("\n    ]\n");
-        try writer.writeAll("  }\n");
-        try writer.writeAll("}\n");
+        try writer.print("{s}{s}]{s}", .{ newline, indent2, newline });
+        try writer.print("{s}}}{s}", .{ indent1, newline });
+        try writer.print("}}{s}", .{newline});
 
         return output.toOwnedSlice();
     }
@@ -326,42 +333,48 @@ pub const JsonFormatter = struct {
         defer output.deinit();
 
         const writer = output.writer();
-        _ = self.pretty_print; // Unused but preserved for future use
 
-        try writer.writeAll("{\n");
+        // Choose formatting based on pretty_print setting
+        const indent1 = if (self.pretty_print) "  " else "";
+        const indent2 = if (self.pretty_print) "    " else "";
+        const indent3 = if (self.pretty_print) "      " else "";
+        const newline = if (self.pretty_print) "\n" else "";
+        const space = if (self.pretty_print) " " else "";
+
+        try writer.print("{{{s}", .{newline});
 
         // Write metadata
         if (self.formatter.include_metadata and metadata != null) {
-            try self.writeJsonMetadata(writer, metadata.?);
-            try writer.writeAll(",\n");
+            try self.writeJsonMetadata(writer, metadata.?, self.pretty_print);
+            try writer.print(",{s}", .{newline});
         }
 
         // Write strings
-        try writer.writeAll("  \"strings\": [\n");
+        try writer.print("{s}\"strings\":{s}[{s}", .{ indent1, space, newline });
         for (strings, 0..) |string, i| {
-            if (i > 0) try writer.writeAll(",\n");
-            try writer.writeAll("    {\n");
-            try writer.print("      \"index\": {},\n", .{i});
+            if (i > 0) try writer.print(",{s}", .{newline});
+            try writer.print("{s}{{{s}", .{ indent2, newline });
+            try writer.print("{s}\"index\":{s}{},{s}", .{ indent3, space, i, newline });
 
-            try writer.print("      \"type\": \"{s}\",\n", .{@tagName(string.data)});
-            try writer.writeAll("      \"content\": ");
+            try writer.print("{s}\"type\":{s}\"{s}\",{s}", .{ indent3, space, @tagName(string.data), newline });
+            try writer.print("{s}\"content\":{s}", .{ indent3, space });
 
             switch (string.data) {
                 .byte => |bytes| try std.json.stringify(bytes, .{}, writer),
                 .token => |tokens| {
-                    // Serialize tokens as JSON array of numbers
                     try writer.writeAll("[");
                     for (tokens, 0..) |token, j| {
                         if (j > 0) try writer.writeAll(",");
+                        if (self.pretty_print and j > 0) try writer.writeAll(" ");
                         try writer.print("{d}", .{token});
                     }
                     try writer.writeAll("]");
                 },
                 .bit => |bits| {
-                    // Serialize bits as JSON array of bytes (for readability)
                     try writer.writeAll("[");
                     for (bits, 0..) |byte, j| {
                         if (j > 0) try writer.writeAll(",");
+                        if (self.pretty_print and j > 0) try writer.writeAll(" ");
                         try writer.print("{d}", .{byte});
                     }
                     try writer.writeAll("]");
@@ -369,48 +382,49 @@ pub const JsonFormatter = struct {
             }
 
             if (string.label) |label| {
-                try writer.print(",\n      \"label\": {d:.3}", .{label});
+                try writer.print(",{s}{s}\"label\":{s}{d:.3}", .{ newline, indent3, space, label });
             }
 
-            try writer.writeAll("\n    }");
+            try writer.print("{s}{s}}}", .{ newline, indent2 });
         }
-        try writer.writeAll("\n  ]\n");
-        try writer.writeAll("}\n");
+        try writer.print("{s}{s}]{s}", .{ newline, indent1, newline });
+        try writer.print("}}{s}", .{newline});
 
         return output.toOwnedSlice();
     }
 
     /// Write JSON metadata
-    fn writeJsonMetadata(self: Self, writer: anytype, metadata: OutputMetadata) !void {
+    fn writeJsonMetadata(self: Self, writer: anytype, metadata: OutputMetadata, pretty_print: bool) !void {
         _ = self;
 
-        try writer.writeAll("  \"metadata\": {\n");
+        const indent1 = if (pretty_print) "  " else "";
+        const indent2 = if (pretty_print) "    " else "";
+        const newline = if (pretty_print) "\n" else "";
+        const space = if (pretty_print) " " else "";
+
+        try writer.print("{s}\"metadata\":{s}{{{s}", .{ indent1, space, newline });
 
         if (metadata.timestamp) |ts| {
-            try writer.print("    \"timestamp\": {},\n", .{ts});
+            try writer.print("{s}\"timestamp\":{s}{},{s}", .{ indent2, space, ts, newline });
         }
 
-        try writer.print("    \"string_count\": {},\n", .{metadata.string_count});
+        try writer.print("{s}\"string_count\":{s}{},{s}", .{ indent2, space, metadata.string_count, newline });
 
         if (metadata.matrix_size) |size| {
-            try writer.writeAll("    \"matrix_size\": {\"rows\": ");
-            try writer.print("{}", .{size.rows});
-            try writer.writeAll(", \"cols\": ");
-            try writer.print("{}", .{size.cols});
-            try writer.writeAll("},\n");
+            try writer.print("{s}\"matrix_size\":{s}{{\"rows\":{s}{},{s}\"cols\":{s}{}}},{s}", .{ indent2, space, space, size.rows, space, space, size.cols, newline });
         }
 
         if (metadata.distance_measure) |measure| {
-            try writer.writeAll("    \"distance_measure\": ");
+            try writer.print("{s}\"distance_measure\":{s}", .{ indent2, space });
             try std.json.stringify(measure, .{}, writer);
-            try writer.writeAll(",\n");
+            try writer.print(",{s}", .{newline});
         }
 
         if (metadata.computation_time_ms) |time_ms| {
-            try writer.print("    \"computation_time_ms\": {d:.3}\n", .{time_ms});
+            try writer.print("{s}\"computation_time_ms\":{s}{d:.3}{s}", .{ indent2, space, time_ms, newline });
         }
 
-        try writer.writeAll("  }");
+        try writer.print("{s}}}", .{indent1});
     }
 };
 
@@ -816,4 +830,49 @@ test "TextFormatter without metadata" {
     // Should not contain metadata
     try testing.expect(std.mem.indexOf(u8, output, "Metadata") == null);
     try testing.expect(std.mem.indexOf(u8, output, "simple") != null);
+}
+
+test "JsonFormatter pretty printing functionality" {
+    const allocator = testing.allocator;
+
+    var strings = [_]StringValue{
+        try StringValue.fromBytes(allocator, "test"),
+    };
+    defer for (&strings) |*s| s.deinit();
+
+    const metadata = OutputMetadata{
+        .string_count = 1,
+        .computation_time_ms = 42.5,
+    };
+
+    // Test with pretty printing enabled
+    var pretty_formatter = JsonFormatter.init(allocator);
+    pretty_formatter.setPrettyPrint(true);
+
+    const pretty_output = try pretty_formatter.formatStrings(&strings, metadata);
+    defer allocator.free(pretty_output);
+
+    // Test with pretty printing disabled
+    var compact_formatter = JsonFormatter.init(allocator);
+    compact_formatter.setPrettyPrint(false);
+
+    const compact_output = try compact_formatter.formatStrings(&strings, metadata);
+    defer allocator.free(compact_output);
+
+    // Pretty printed should have more characters (due to whitespace and newlines)
+    try testing.expect(pretty_output.len > compact_output.len);
+
+    // Pretty printed should contain newlines and indentation
+    try testing.expect(std.mem.indexOf(u8, pretty_output, "\n") != null);
+    try testing.expect(std.mem.indexOf(u8, pretty_output, "  ") != null);
+
+    // Compact should not contain newlines (except for final newline)
+    const newline_count = std.mem.count(u8, compact_output, "\n");
+    try testing.expect(newline_count <= 1);
+
+    // Both should contain the same essential data
+    try testing.expect(std.mem.indexOf(u8, pretty_output, "\"test\"") != null);
+    try testing.expect(std.mem.indexOf(u8, compact_output, "\"test\"") != null);
+    try testing.expect(std.mem.indexOf(u8, pretty_output, "42.5") != null);
+    try testing.expect(std.mem.indexOf(u8, compact_output, "42.5") != null);
 }

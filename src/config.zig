@@ -21,11 +21,15 @@ pub const Config = struct {
     pub fn fromJsonFile(allocator: Allocator, path: []const u8) !Self {
         const file = std.fs.cwd().openFile(path, .{}) catch |err| switch (err) {
             error.FileNotFound => {
-                // Configuration file not found, using default configuration
+                if (!@import("builtin").is_test) {
+                    std.log.warn("Configuration file not found: {s}, using default configuration", .{path});
+                }
                 return Self{};
             },
             error.AccessDenied => {
-                // Access denied to configuration file
+                if (!@import("builtin").is_test) {
+                    std.log.err("Access denied to configuration file: {s}", .{path});
+                }
                 return err;
             },
             else => return err,
