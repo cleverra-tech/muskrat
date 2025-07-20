@@ -20,7 +20,14 @@ pub const Config = struct {
     /// Load configuration from JSON file
     pub fn fromJsonFile(allocator: Allocator, path: []const u8) !Self {
         const file = std.fs.cwd().openFile(path, .{}) catch |err| switch (err) {
-            error.FileNotFound => return Self{},
+            error.FileNotFound => {
+                // Configuration file not found, using default configuration
+                return Self{};
+            },
+            error.AccessDenied => {
+                // Access denied to configuration file
+                return err;
+            },
             else => return err,
         };
         defer file.close();
@@ -28,13 +35,19 @@ pub const Config = struct {
         const contents = try file.readToEndAlloc(allocator, 1024 * 1024);
         defer allocator.free(contents);
 
-        return try fromJson(allocator, contents);
+        return fromJson(allocator, contents) catch |err| {
+            // Failed to parse configuration file, propagate error
+            return err;
+        };
     }
 
     /// Load configuration from JSON string
     pub fn fromJson(allocator: Allocator, json_str: []const u8) !Self {
         var parsed = std.json.parseFromSlice(std.json.Value, allocator, json_str, .{}) catch |err| switch (err) {
-            error.SyntaxError => return Self{},
+            error.SyntaxError => {
+                // Invalid JSON syntax in configuration, using default configuration
+                return Self{};
+            },
             else => return err,
         };
         defer parsed.deinit();

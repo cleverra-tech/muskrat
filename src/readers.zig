@@ -85,8 +85,14 @@ pub const FileReader = struct {
     /// Read strings from file
     pub fn readFromFile(self: *Self, file_path: []const u8) !void {
         const file = std.fs.cwd().openFile(file_path, .{}) catch |err| switch (err) {
-            error.FileNotFound => return error.FileNotFound,
-            error.AccessDenied => return error.AccessDenied,
+            error.FileNotFound => {
+                // File not found, return appropriate error
+                return error.FileNotFound;
+            },
+            error.AccessDenied => {
+                // Access denied to file, return appropriate error
+                return error.AccessDenied;
+            },
             else => return err,
         };
         defer file.close();
@@ -226,8 +232,14 @@ pub const DirectoryReader = struct {
     /// Read strings from directory
     pub fn readFromDirectory(self: *Self, dir_path: []const u8) !void {
         var dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch |err| switch (err) {
-            error.FileNotFound => return error.DirectoryNotFound,
-            error.AccessDenied => return error.AccessDenied,
+            error.FileNotFound => {
+                // Directory not found, return appropriate error
+                return error.DirectoryNotFound;
+            },
+            error.AccessDenied => {
+                // Access denied to directory, return appropriate error
+                return error.AccessDenied;
+            },
             else => return err,
         };
         defer dir.close();
@@ -244,7 +256,14 @@ pub const DirectoryReader = struct {
                         defer file_reader.deinit();
 
                         file_reader.readFromFile(file_path) catch |err| switch (err) {
-                            error.FileNotFound, error.AccessDenied => continue, // Skip inaccessible files
+                            error.FileNotFound => {
+                                // File not found (possibly deleted during processing), skip it
+                                continue;
+                            },
+                            error.AccessDenied => {
+                                // Access denied to file, skip it
+                                continue;
+                            },
                             else => return err,
                         };
 

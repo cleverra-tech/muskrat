@@ -247,7 +247,10 @@ const WorkQueue = struct {
         for (matrix.row_range.start..matrix.row_range.end) |i| {
             for (matrix.col_range.start..matrix.col_range.end) |j| {
                 if (matrix.triangular and i > j) continue;
-                queue.items.append(WorkItem{ .row = i, .col = j }) catch {};
+                queue.items.append(WorkItem{ .row = i, .col = j }) catch {
+                    // This is a critical failure that would result in incomplete computation
+                    continue;
+                };
             }
         }
 

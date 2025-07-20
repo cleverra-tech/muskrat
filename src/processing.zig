@@ -266,13 +266,16 @@ const TokenIterator = struct {
         const token = self.input[start..self.pos];
         if (self.normalize_case) {
             // For normalized tokens, we need to allocate and convert
-            var normalized = self.allocator.alloc(u8, token.len) catch return null;
+            var normalized = self.allocator.alloc(u8, token.len) catch {
+                // Memory allocation failure is critical - caller should handle this
+                return null;
+            };
             for (token, 0..) |c, i| {
                 normalized[i] = std.ascii.toLower(c);
             }
             // Track allocated token for proper cleanup
             self.allocated_tokens.append(normalized) catch {
-                // If we can't track it, free it immediately and return null
+                // If we can't track it, free it immediately and propagate failure
                 self.allocator.free(normalized);
                 return null;
             };

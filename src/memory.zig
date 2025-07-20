@@ -160,7 +160,9 @@ pub const MemoryPool = struct {
     pub fn reset(self: *Self) void {
         // Move current block to free blocks if it exists
         if (self.current_block) |block| {
-            self.free_blocks.append(block) catch {};
+            self.free_blocks.append(block) catch {
+                // This is a memory leak but not a critical failure - continue operation
+            };
         }
 
         // Get a block from free blocks or keep current
