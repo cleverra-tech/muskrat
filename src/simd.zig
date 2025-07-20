@@ -34,11 +34,17 @@ pub fn hammingDistanceSIMD(str1: StringValue, str2: StringValue) f64 {
 
     const data1 = switch (str1.data) {
         .byte => |bytes| bytes,
-        else => unreachable,
+        else => {
+            // SIMD Hamming distance only supports byte strings
+            return std.math.inf(f64);
+        },
     };
     const data2 = switch (str2.data) {
         .byte => |bytes| bytes,
-        else => unreachable,
+        else => {
+            // SIMD Hamming distance only supports byte strings
+            return std.math.inf(f64);
+        },
     };
 
     var distance: u32 = 0;
